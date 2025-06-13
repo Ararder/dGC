@@ -11,8 +11,25 @@ Authors@R: c(
   )
 Description: More about what it does (maybe more than one line).
     Continuation lines should be indented.
-License: What license is it under?
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 URL: https://github.com/Ararder/dGC
 BugReports: https://github.com/Ararder/dGC/issues
+Imports: 
+    cli,
+    dplyr,
+    dynamicTreeCut,
+    lme4,
+    Matrix,
+    purrr,
+    readr,
+    rlang,
+    stats,
+    utils
+Suggests: 
+    testthat (>= 3.0.0),
+    WGCNA,
+    igraph,
+Config/testthat/edition: 3
+RoxygenNote: 7.3.2
