@@ -87,6 +87,21 @@ corr_permute <- function(
 }
 
 
+#' Calculate the difference in Gene-Gene correlation across two conditions
+#'
+#' @param M a matrix of gene expression values, with genes as columns and cells as rows
+#' @param obs_1 a data frame containing cell identifiers and donor information for the first condition
+#' @param obs_2 a data frame containing cell identifiers and donor information for the second condition
+#' @param fit_models a character vector indicating whether to fit a linear mixed model to the data, one of "none", "blmer", "lmer", or "glmer"
+#' @param method a character string indicating the method to use for correlation calculation, one of "pearson" or "spearman"
+#' @param ncores number of cores to use for parallel processing, default is 1
+#'
+#' @returns a matrix of the difference in correlation between the two conditions
+#' @export
+#'
+#' @examples \dontrun{
+#' corr_diff(M, obs_1, obs_2, fit_models = "blmer", method = "pearson", ncores = 4)
+#' }
 corr_diff <- function(M, obs_1, obs_2, fit_models =c("none", "blmer", "lmer","glmer"), method = c("pearson", "spearman"), ncores=1) {
 
   method <- rlang::arg_match(method)
@@ -97,7 +112,7 @@ corr_diff <- function(M, obs_1, obs_2, fit_models =c("none", "blmer", "lmer","gl
     m2 <- Matrix::Matrix(M)[obs_2$cell, , drop = FALSE]
   } else {
     m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, ncores = ncores, engine = fit_models)
-    m2 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, ncores = ncores, engine = fit_models)
+    m2 <- compute_residuals(matrix = M, cells = obs_2$cell, donor_vec = obs_2$donor, ncores = ncores, engine = fit_models)
   }
 
   cor_cond1 <- stats::cor(as.matrix(m1), method = method)
