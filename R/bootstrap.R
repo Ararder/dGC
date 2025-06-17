@@ -87,6 +87,21 @@ corr_permute <- function(
 }
 
 
+#' compute residuals of a single-cell data matrix
+#'
+#' @param matrix count matrix
+#' @param engine method to fit the model, one of "blmer", "lmer", or "glmer"
+#' @param formula a formula to use for the model, default is "expr ~ 1 + (1|donor)"
+#' @param cells a vector of cell identifiers to use, if NULL all cells are used
+#' @param donor_vec a vector of donor identifiers, must be the same length as cells
+#' @param ncores number of cores to use for parallel processing, default is 1
+#'
+#' @returns a list()
+#' @export
+#'
+#' @examples \dontrun{
+#' compute_residuals(count_matrix)
+#' }
 compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), formula = stats::as.formula("expr ~ 1 + (1|donor)"), cells=NULL, donor_vec, ncores=1) {
   engine <- rlang::arg_match(engine)
   stopifnot(length(cells) == length(donor_vec))
@@ -131,6 +146,17 @@ fit_model <- function(expr, donor_vec, formula, engine) {
 
 
 
+#' calculate a mask from a list of permutations
+#'
+#' @param P list of permutations, from [corr_permute()]
+#' @param R a matrix of correlations, e.g. the output from [corr_diff()]
+#'
+#' @returns a matrix of the same dimensions as R, with values between 0 and 1 indicating the proportion of permutations that were greater than the observed value in R
+#' @export
+#'
+#' @examples \dontrun{
+#' mask_from_perm(perm, real)
+#' }
 mask_from_perm <- function(P, R) {
   # pos_mask <- matrix(0L, ncol = ncol(R),nrow = nrow(R))
   # neg_mask <- matrix(0L, ncol = ncol(R),nrow = nrow(R))

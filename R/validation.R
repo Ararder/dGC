@@ -1,3 +1,13 @@
+#' validate data format
+#'
+#' @param data input list
+#'
+#' @returns a list
+#' @export
+#'
+#' @examples \dontrun{
+#' data <- validate_data(data)
+#' }
 validate_data <- function(data) {
   # ───────────────────────────────────────── checks 0: list & names
   if (!is.list(data))
