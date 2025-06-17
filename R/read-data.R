@@ -1,3 +1,14 @@
+#' Read seurat data into dGC format
+#'
+#' @param path filepath
+#' @param type filetype
+#'
+#' @returns a list with three elements:
+#' @export
+#'
+#' @examples \dontrun{
+#' read_data("path/to/sr.rds")
+#' }
 read_data <- function(path, type = c("seurat","h5ad", "loom")) {
   type <- rlang::arg_match(type)
   rlang::check_required(path)

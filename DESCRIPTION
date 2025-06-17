@@ -17,9 +17,12 @@ LazyData: true
 URL: https://github.com/Ararder/dGC
 BugReports: https://github.com/Ararder/dGC/issues
 Imports: 
+    blme,
     cli,
     dplyr,
     dynamicTreeCut,
+    furrr,
+    future,
     lme4,
     Matrix,
     purrr,
@@ -33,3 +36,4 @@ Suggests:
     igraph,
 Config/testthat/edition: 3
 RoxygenNote: 7.3.2
+Config/Needs/website: rmarkdown

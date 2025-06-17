@@ -1,0 +1,50 @@
+---
+title: "testing"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(dGC)
+library(tidyverse)
+```
+
+
+```{r, eval=FALSE}
+data <- read_data("~/projects/dcgna/workflow/t2d/qc_merged_seurat.rds")
+
+d1 <- dplyr::filter(data$obs, dataset == "sandberg")
+m <- data$count_matrix[d1$cell, ]
+data2 <- list(
+  count_matrix = m,
+  obs = d1,
+  var = data$var
+)
+
+
+
+reduced <- prep_cluster_counts(data2, "alpha cells", ct_column = "named_celltype", prop_cells = 0.7)
+# M <- compute_residuals(reduced)
+M <- reduced$log2_matrix
+
+reduced$obs[["random_split"]] <- sample(c("case","control"), size = 735, replace = TRUE)
+true_diff <- corr_diff(M, reduced$obs, by = "random_split",method = "pearson")
+
+
+bootstrap_res <- corr_bootstrap_diff(M, obs_df = reduced$obs, method = "pearson", n_boot = 20)
+
+M <- apply_threshold(bootstrap_res, true_diff)
+
+
+normalise_edges <- TRUE
+if(normalise_edges) {
+  M <- M / max(abs(M))
+}
+
+
+```

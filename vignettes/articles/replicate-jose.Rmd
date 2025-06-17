@@ -1,0 +1,132 @@
+---
+title: "replicate-jose"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(dGC)
+library(tidyverse)
+```
+
+
+```{r, eval = FALSE}
+load("~/projects/dcgna_t2d/workflow/raw_data/hjerling_leffler/ClusteredData_20210723.RData")
+```
+
+```{r, eval=FALSE}
+matrix <- DataExprGrouped_RPKM
+matrix <- t(matrix)
+
+cell_id <- as.character(TraitsWithCellType["CellID",])
+status <- as.character(TraitsWithCellType["Disease",])
+celltype <- as.character(TraitsWithCellType["CellType",])
+donor <- as.character(TraitsWithCellType["Donor",]) |> janitor::make_clean_names(allow_dupes = TRUE) 
+
+obs <- dplyr::tibble(
+  cell = cell_id,
+  status = status,
+  celltype = celltype,
+)
+rownames(matrix) <- obs$cell
+colnames(matrix)
+var <- dplyr::tibble(gene = colnames(matrix))
+
+
+data <- list(
+  matrix = matrix,
+  obs = obs,
+  var = var
+)
+readr::write_rds(data, "~/projects/dcgna/workflow/t2d/hjerling-leffler_rpkm.rds")
+
+
+
+
+M <- data$matrix
+
+M <- M[obs$celltype =="Beta",]
+min_cells=10
+min_expr=2
+
+m <-M >= min_expr
+g<-row.names(input_mat[rowSums(m)>=min_cells,])
+M[,colSums(m) > 10] |> length()
+
+dim(M)
+
+sum(colSums(m) > 10)
+
+
+
+
+
+```
+
+
+
+
+
+```{r,eval=FALSE}
+library(Matrix)
+library(WGCNA)
+library(ggplot2)
+library(tsne)
+library(Rtsne)
+library(igraph)
+library(dendextend)
+source("/nas/longleaf/home/josean/code/basic_functions_20211019.R")
+source("/nas/longleaf/home/josean/code/plot_functions_20210629.R")
+library(colorspace)
+library(lme4)
+library(blme)
+library(performance)
+library(reshape2)
+library(parallel)
+
+setwd('/nas/longleaf/home/josean/dGSNA/BetaCells/Analysis_10/')
+dir<-"/nas/longleaf/home/josean/data/Diabetes/"
+
+Disease<-readRDS(file=paste0(dir,"Disease_20210726.rds"))
+
+samples<-readRDS(file=paste0(dir,"SampleList_rpkm_20210726.rds"))
+clustersAnnotation<-readRDS(file=paste0(dir,"CellType_20210726.rds"))
+
+NCORES<-16
+MIN_CELLS<-20
+#FIXED_NUMBER_CELLS<-100
+
+print(paste0("Number of cores detected: ",detectCores()))
+
+sa<-SelectCellCommunities(samples,clustersAnnotation,c("Beta"),min_cells = MIN_CELLS)
+
+#sfn<-GetFixedNumberOfCells(sa,NumberOfCells = FIXED_NUMBER_CELLS)
+
+states<-SamplesStates(sa,Disease)
+states
+
+GetNumberOfCells(samples,clustersAnnotation,c("Beta"),states,save=TRUE,filename="Ncells_betacells.rds")
+
+
+genes<-GetCommonExpressedGenes(sa,samp=NULL,min_expr=2,met="NumberOfCells",min_cells=10,cell_proportion=0.3,print=TRUE,FileName="BetaCells_BackgroundGeneSet.txt")
+genes
+
+lm<-GetLinearModel(sa,sample_groups=states,genes=genes,model="blmer",normalization=TRUE)
+
+sm<-FindSimilaritiesForNestedData(data_lm=lm,method="pearson")
+
+saveRDS(sm,file="similarities_matrices.rds")
+
+mask<-GetMaskFromRandomDonors(input_data=sa,sample_groups=states,
+                              SimilarityDifferences=sm[["type II diabetes"]]-sm[["normal"]],
+                              genes=genes,model="blmer",normalization=TRUE,replacement=FALSE,method="pearson",
+                              T=512,Nctrl=5,Ncases=4,verbose=TRUE,ncores=NCORES)
+
+saveRDS(mask,file="mask_matrix.rds")
+```
+

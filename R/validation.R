@@ -1,15 +1,14 @@
-
 validate_data <- function(data) {
   # ───────────────────────────────────────── checks 0: list & names
   if (!is.list(data))
     rlang::abort("`data` must be a list.")
 
-  req <- c("count_matrix", "obs", "var")
+  req <- c("matrix", "obs", "var")
   miss <- setdiff(req, names(data))
   if (length(miss))
     rlang::abort(c("`data` is missing component(s):", paste(miss, collapse = ", ")))
 
-  mat <- data$count_matrix
+  mat <- data$matrix
   obs <- data$obs
   var <- data$var
 
@@ -33,11 +32,13 @@ validate_data <- function(data) {
   if (is.null(colnames(mat)))
     rlang::abort("`count_matrix` must have colnames (genes).")
 
-  # identical sets?
-  if (!setequal(obs$cell, rownames(mat)))
-    rlang::abort("`obs$cell` must contain exactly the same values as rownames(count_matrix).")
-  if (!setequal(var$gene, colnames(mat)))
-    rlang::abort("`var$gene` must contain exactly the same values as colnames(count_matrix).")
+  # ───────────────────────────────────────── subset mat if obs/var were filtered
+  if (!all(obs$cell %in% rownames(mat)))
+    rlang::abort("`obs$cell` contains unknown cells not found in count_matrix.")
+  if (!all(var$gene %in% colnames(mat)))
+    rlang::abort("`var$gene` contains unknown genes not found in count_matrix.")
+
+  mat <- mat[obs$cell, var$gene, drop = FALSE]
 
   # ───────────────────────────────────────── reorder obs / var if needed
   if (!identical(obs$cell, rownames(mat))) {
@@ -47,6 +48,5 @@ validate_data <- function(data) {
     var <- var[match(colnames(mat), var$gene), , drop = FALSE]
   }
 
-  # return re-ordered (invisible so you can `data <- validate_data(data)`)
-  invisible(list(count_matrix = mat, obs = obs, var = var))
+  list(matrix = mat, obs = obs, var = var)
 }

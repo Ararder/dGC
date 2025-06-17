@@ -60,7 +60,7 @@ gsa <- function(geneset, pathways, backg, set_name = "set1", overlap_threshold =
     dplyr::mutate(
       p_hyper = stats::phyper(overlap_size - 1, geneset_size, background_size - geneset_size, pathway_size, lower.tail=FALSE),
       set_name =  {{ set_name }},
-      n_sets_tested = n(),
+      n_sets_tested = dplyr::n(),
       log_fold_enrich = calc_log_fold_enrichment(background_size, geneset_size, pathway_size, overlap_size),
       odds_ratio = calc_odds_ratio(background_size, geneset_size, pathway_size, overlap_size),
       relative_risk = calc_relative_risk(background_size, geneset_size, pathway_size, overlap_size)

@@ -1,5 +1,18 @@
 utils::globalVariables(c("cell"))
-prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cells = 0.9, min_expr = NULL) {
+#' Prepare dGA format by subsetting cells and genes
+#'
+#' @param obj dGA object
+#' @param ct celltype, "beta cells"
+#' @param ct_column column of celltypes
+#' @param prop_cells proportion of cells that need to express a gene to be kept
+#'
+#' @returns a list
+#' @export
+#'
+#' @examples \dontrun{
+#' prep_cluster_counts(obj, ct = "beta cells", ct_column = "named_celltype", prop_cells = 0.9)
+#' }
+prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cells = 0.9) {
   # Input validation
   rlang::check_required(ct)
   rlang::check_required(ct_column)
@@ -45,14 +58,29 @@ prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cell
   cli::cli_alert_info("Selected {.emph {length(rownames(sub_M))}} cells and {.emph {length(colnames(sub_M))}} genes")
 
   list(
-    log2_matrix = sub_M,
+    matrix = sub_M,
     obs = obs_df,
     var = var_df
   )
 }
 
 
-corr_diff <- function(M, obs_df, by = "status", method = "pearson") {
+#' Calculate the difference in correlation between two conditions
+#'
+#' @param M matrix (cells x genes)
+#' @param obs_df observation data frame with a column for conditions
+#' @param by column name in obs_df to split by (default: "status")
+#' @param method correlation method (default: "pearson")
+#'
+#' @returns a matrix of differential correlations
+#' @export
+#'
+#' @examples \dontrun{
+#' corr_diff(M, obs_df, by = "status", method = "spearman")
+#' }
+corr_diff <- function(M, obs_df, by = "status", method = c("pearson", "spearman")) {
+
+  method <- rlang::arg_match(method)
   # Validate inputs
   if (!by %in% colnames(obs_df)) {
     stop("Column '", by, "' not found in obs_df")
@@ -82,45 +110,24 @@ corr_diff <- function(M, obs_df, by = "status", method = "pearson") {
   cor_cond2 <- stats::cor(as.matrix(M[cells_cond2, , drop = FALSE]), method = method)
 
   # Return differential correlation (condition2 - condition1)
+  cli::cli_inform("subtracting: '{condition_names[2]}' - '{condition_names[1]}'")
   cor_cond2 - cor_cond1
 }
 
 
 
-corr_bootstrap_diff <- function(M, obs_df, n_bootstrap = 50, method = "pearson") {
 
-  cli::cli_alert_info("Starting bootstrap analysis with {n_bootstrap} replicates")
-
-  # Generate random splits
-  obs_with_splits <- generate_random_splits(obs_df, n_bootstrap)
-  split_columns <- paste0("rep_", seq_len(n_bootstrap))
-
-  # Calculate differential correlations for each bootstrap replicate
-  cli::cli_alert_info("Computing bootstrap correlations...")
-  bootstrap_matrices <- purrr::map(split_columns, \(x) {
-    corr_diff(M, obs_with_splits, by = x, method = method)
-    },
-    .progress = list(type = "tasks", name = "Bootstrapping random splits")
-  )
-
-  # Convert to array for efficient computation
-  bootstrap_array <- simplify2array(bootstrap_matrices)
-
-  cor_max <- apply(bootstrap_array, c(1, 2), max)
-  cor_min <- apply(bootstrap_array, c(1, 2), min)
-  cor_abs <- apply(simplify2array(list(cor_max, cor_min)), c(1, 2), function(x) max(abs(x)))
-
-
-  list(
-    bootstrap_array = bootstrap_array,
-    cor_max = cor_max,
-    cor_min = cor_min,
-    cor_abs = cor_abs
-  )
-}
-
-
-
+#' Apply bootstrap threshhold
+#'
+#' @param bootstrap_res output of [corr_bootstrap_diff()]
+#' @param true_diff output of [corr_diff()]
+#'
+#' @returns a matrix
+#' @export
+#'
+#' @examples \dontrun{
+#' apply_threshold(bootstrap_res, true_diff)
+#' }
 apply_threshold <- function(bootstrap_res, true_diff) {
   # Validate input
   if (!is.list(bootstrap_res) || !all(c("cor_max", "cor_min", "cor_abs") %in% names(bootstrap_res))) {
@@ -174,24 +181,6 @@ generate_random_splits <- function(df_obs, n_reps = 20) {
 
 
 
-compute_residuals <- function(obj) {
-
-  genes <- obj$log2_matrix |> colnames()
-
-  res <- purrr::map(genes, \(X) {
-    df <- dplyr::tibble(GENE = obj$log2_matrix[, X],donor = factor(obj$obs$donor))
-    stats::residuals(lme4::lmer(GENE ~ 1 + (1 | donor), data = df))
-
-  }, .progress = list(type = "tasks", name = "Computing residuals for genes"))
-
-
-  mat <- vapply(res,FUN = identity,FUN.VALUE = numeric(nrow(obj$log2_matrix)))
-  colnames(mat) <- colnames(obj$log2_matrix)
-  rownames(mat) <- rownames(obj$log2_matrix)
-
-  mat
-
-}
 
 
 estimate_graphs <- function(M, normalise_edges = TRUE) {
