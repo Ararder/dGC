@@ -31,16 +31,33 @@ test_that("The full pipeline", {
   data <- read_data("~/projects/dcgna/workflow/t2d/qc_merged_seurat.rds")
   data$count_matrix <- (data$count_matrix / rowSums(data$count_matrix))*10^6
 
-
+  corr_diff
 
   reduced <- prep_cluster_counts(data, "beta cells", ct_column = "named_celltype", prop_cells = 0.9)
 
   all <-
-    reduced$obs |> dplyr::count(donor, status) |>
+    reduced$obs |>
+    dplyr::filter(dataset == "jhl") |>
+    dplyr::count(donor, status) |>
     dplyr::filter(n >= 20)
 
   reduced$obs <- dplyr::filter(reduced$obs, donor %in% all$donor)
   reduced <- validate_data(reduced)
+
+  conditions <- split(reduced$obs,reduced$obs$status)
+
+
+  real_diff <- corr_diff(
+    reduced$matrix,
+    conditions[[1]],
+    conditions[[2]],
+    fit_models = "blmer",
+    method = "pearson",
+    ncores = 6
+  )
+
+
+
   M <- compute_residuals(reduced$matrix, cells = reduced$obs$cell, donor_vec = reduced$obs$donor,ncores = 6)
   reduced$matrix <- M
 

@@ -87,6 +87,30 @@ corr_permute <- function(
 }
 
 
+corr_diff <- function(M, obs_1, obs_2, fit_models =c("none", "blmer", "lmer","glmer"), method = c("pearson", "spearman"), ncores=1) {
+
+  method <- rlang::arg_match(method)
+  fit_models <- rlang::arg_match(fit_models)
+
+  if(fit_models == "none") {
+    m1 <- Matrix::Matrix(M)[obs_1$cell, , drop = FALSE]
+    m2 <- Matrix::Matrix(M)[obs_2$cell, , drop = FALSE]
+  } else {
+    m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, ncores = ncores, engine = fit_models)
+    m2 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, ncores = ncores, engine = fit_models)
+  }
+
+  cor_cond1 <- stats::cor(as.matrix(m1), method = method)
+  cor_cond2 <- stats::cor(as.matrix(m2), method = method)
+
+  cor_cond2 - cor_cond1
+}
+
+
+
+
+
+
 #' compute residuals of a single-cell data matrix
 #'
 #' @param matrix count matrix
