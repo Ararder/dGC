@@ -19,9 +19,6 @@ prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cell
   rlang::check_required(obj)
 
 
-  if (!ct_column %in% colnames(obj[["obs"]])) {
-    stop("Column '", ct_column, "' not found in obs data")
-  }
   obs_df <- obj[["obs"]]
   var_df <- obj[["var"]]
 
@@ -39,7 +36,7 @@ prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cell
   cli::cli_inform("Selected {.emph {n_cells_selected}} cells of type '{ct}'")
 
   # Subset matrix and calculate gene filtering threshold
-  M <- obj[["count_matrix"]]
+  M <- obj[["matrix"]]
   sub_M <- M[sel_cells, , drop = FALSE]
   min_cells_threshold <- as.integer(n_cells_selected * prop_cells)
 

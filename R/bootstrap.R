@@ -8,7 +8,7 @@ utils::globalVariables(c("donor", ""))
 #'
 #' @param obj a list in the format of [read_data()]
 #' @param n_iter number of iterations to perform
-#' @param residualise whether to fit a linear-mixed-model to remove donor effects from each gene
+#' @param fit_models whether to fit a linear-mixed-model to remove donor effects from each gene
 #' @param method method for correlation, pearson or spearman
 #' @param n_ctrl number of donors in "control" correlation group
 #' @param n_case number of donors in "case" correlation group
@@ -24,13 +24,12 @@ utils::globalVariables(c("donor", ""))
 #' }
 #'
 corr_permute <- function(
-    obj, n_iter=100, residualise = FALSE, method = c("pearson","spearman"),
-    n_ctrl=10, n_case =10, min_cells = 20, replace=FALSE,ncores=1
+    obj, n_iter=100, fit_models = c("none", "blmer", "lmer","glmer"), method = c("pearson","spearman"),
+    n_ctrl=10, n_case =10, replace=FALSE,ncores=1
     ) {
   method <- rlang::arg_match(method)
 
   all_donors <- dplyr::count(obj$obs, donor) |>
-    dplyr::filter(n >= min_cells) |>
     dplyr::pull(donor)
 
   M <- obj$matrix
@@ -39,10 +38,9 @@ corr_permute <- function(
 
   if(ncores == 1) {
     output <- purrr::map(1:n_iter, function(i) {
-      .perm_iter(
-        M = M,obs = obs,
-        all_donors = all_donors, n_ctrl = n_ctrl, n_case = n_case,
-        replace = replace, fit_models = residualise, method = method,ncores=1
+      corr_permute_diff(
+        M = M,obs = obs,all_donors = all_donors, n_ctrl = n_ctrl, n_case = n_case,
+        replace = replace, fit_models = fit_models, method = method,ncores=1
       )
 
     }, .progress = list(type = "tasks", name = "computing permutations"))
@@ -51,12 +49,10 @@ corr_permute <- function(
 
     future::plan(future::multisession, workers = ncores)
     output <- furrr::future_map(1:n_iter, \(i) {
-      .perm_iter(
-        M = M,obs = obs,
-        all_donors = all_donors, n_ctrl = n_ctrl, n_case = n_case,
-        replace = replace, fit_models = residualise, method = method,ncores=1
+      corr_permute_diff(
+        M = M,obs = obs,all_donors = all_donors, n_ctrl = n_ctrl, n_case = n_case,
+        replace = replace, fit_models = fit_models, method = method,ncores=1
         )
-
     }, .progress =TRUE, .options = furrr::furrr_options(seed = TRUE))
   }
 
@@ -66,23 +62,20 @@ corr_permute <- function(
 
 
 
-.perm_iter <- function(M, obs, all_donors, n_ctrl, n_case, replace, fit_models, method,ncores=1) {
+corr_permute_diff <- function(M, obs, all_donors, n_ctrl, n_case, replace, fit_models, method,ncores=1) {
+  # sample donors in the specified structure
   group1 <- sample(all_donors, size = n_ctrl, replace = replace)
   group2 <- sample(setdiff(all_donors, group1), size = n_case, replace = replace)
 
-  if(fit_models) {
-    cell_info <- dplyr::filter(obs, donor %in% group1)
-    cell_info2 <- dplyr::filter(obs, donor %in% group2)
-    m1 <- compute_residuals(matrix = M,cells = cell_info$cell,donor_vec = cell_info$donor, ncores = ncores)
-    m2 <- compute_residuals(matrix = M,cells = cell_info2$cell,donor_vec = cell_info2$donor, ncores = ncores)
+  corr_diff(
+    M = M,
+    obs_1 = dplyr::filter(obs, donor %in% group1),
+    obs_2 = dplyr::filter(obs, donor %in% group2),
+    fit_models = fit_models,
+    method = method,
+    ncores = ncores
+  )
 
-  } else {
-    m1 <- Matrix::Matrix(M)[obs$donor %in% group1, ]
-    m2 <- Matrix::Matrix(M)[obs$donor %in% group2, ]
-  }
-
-
-  stats::cor(as.matrix(m2), method = method) - stats::cor(as.matrix(m1), method = method)
 
 }
 
@@ -189,42 +182,60 @@ fit_model <- function(expr, donor_vec, formula, engine) {
 #'
 #' @param P list of permutations, from [corr_permute()]
 #' @param R a matrix of correlations, e.g. the output from [corr_diff()]
-#'
+#' @param alpha significance level, default is 0.01
 #' @returns a matrix of the same dimensions as R, with values between 0 and 1 indicating the proportion of permutations that were greater than the observed value in R
 #' @export
 #'
 #' @examples \dontrun{
 #' mask_from_perm(perm, real)
 #' }
-mask_from_perm <- function(P, R) {
-  # pos_mask <- matrix(0L, ncol = ncol(R),nrow = nrow(R))
-  # neg_mask <- matrix(0L, ncol = ncol(R),nrow = nrow(R))
-  # pos_edges <- R > 0
-  # neg_edges <- R < 0
-  mask <- matrix(0L, ncol = ncol(R),nrow = nrow(R))
+mask_from_perm <- function(P, R,alpha=0.01) {
+
+  mask <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
+  mask_pos <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
+  pos_increment <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
+  mask_neg <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
+  neg_increment <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
+
+  pos_edges <- R > 0
+  neg_edges <- R < 0
 
   for(i in seq_along(P)) {
     perm <- P[[i]]
     mask <- mask + (abs(R) > abs(perm))
 
-    # # positive edges
-    # pos <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
-    # pos[pos_edges] <- R[pos_edges] > perm[pos_edges]
-    # pos_mask <- pos_mask + pos
-    #
-    # #
-    # neg <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
-    # neg[neg_edges] <- R[neg_edges] > perm[neg_edges]
-    # neg_mask <- neg_mask + neg
+    # for sign tested, test only against instances where the sign is the same
+    pos_test_mask <- perm > 0 & pos_edges
+    test_result <- R > perm
+    mask_pos[pos_test_mask] <- mask_pos[pos_test_mask] + test_result[pos_test_mask]
+    pos_increment[pos_test_mask] <- pos_increment[pos_test_mask] + 1
 
-
+    neg_test_mask <- perm < 0 & neg_edges
+    test_result <- R < perm
+    mask_neg[neg_test_mask] <- mask_neg[neg_test_mask] + test_result[neg_test_mask]
+    neg_increment[neg_test_mask] <- neg_increment[neg_test_mask] + 1
 
 
   }
 
+  emp_p_neg <- 1 - ( mask_neg  / (neg_increment +1) )
+  emp_p_pos <- 1 - ( mask_pos  / (pos_increment +1) )
+  emp_p <- 1 - ( mask  / (length(P)+1) )
+
+  sum(emp_p_neg < 0.05) / length(emp_p_neg)
+  sum(emp_p_pos < 0.05) / length(emp_p_pos)
+  sum(emp_p < 0.05) / length(emp_p_pos)
+
+
+
+
+
+
+
+
+
   emp_p <- 1 - ( mask  / (length(P)+1) )
   tot <- length(mask)
-  alpha <- 0.01
   n_edges <- sum(emp_p < alpha)
   cli::cli_alert_info(
    "{round(n_edges / tot, 3)}% of edges are significant at alpha = {alpha}
@@ -238,6 +249,7 @@ mask_from_perm <- function(P, R) {
     Detected {n_edges} edges, under which {round(alpha*tot)} are expected by chance.
    False-proportion rate is estimated to be {round(((alpha*tot) / n_edges),3)*100}%"
   )
+  emp_p
 
 
 }
@@ -247,20 +259,50 @@ mask_from_perm <- function(P, R) {
 
 
 
-perm_gene_test <- function(permutations) {
-  G = nrow(permutations[[1]])
-  N = length(permutations)
+perm_gene_test <- function(P, R) {
+  G = nrow(R)
+  N = length(P)
 
-  purrr::map(seq_along(permutations), \(idx){
+
+  # future::plan(future::multisession, workers = ncores)
+  gene_null_distrib <- purrr::map(seq_along(P[1:25]), \(idx){
+    p_iter <- P[[idx]]
 
     mask_x <- mask_from_perm(
-      P = permutations[-idx],
-      R = permutations[[idx]]
+      P = P[-idx],
+      R = p_iter
     )
 
 
+    R[mask_x > 0.025] <- 0
+    R[mask_x < 0.025] <- 1
 
-  })
+    edges <- rowSums(R)
+
+    as.matrix(edges)
+
+  },.progress = list(type = "tasks"))
+
+
+  # null_dist <- purrr::reduce(gene_null_distrib, cbind)
+  # row_max <- apply(null_dist, 1, max)
+  #
+  # mask <- mask_from_perm(P, R)
+  # R[mask > 0.025] <- 0
+  # R[mask < 0.025] <- 1
+  # edges <- rowSums(R)
+  # obs <- dplyr::tibble(links = edges, genes = names(edges))
+  # null_res <- dplyr::tibble(links = row_max, genes = names(row_max))
+  # dplyr::inner_join(obs, null_res,by = "genes") |>
+  #   dplyr::mutate(diff = links.x - links.y) |>
+  #   dplyr::filter(links.x > links.y) |>
+  #   print(n = 21)
+
+
+
+
+
+
 
 
 }

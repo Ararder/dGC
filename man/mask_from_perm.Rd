@@ -4,7 +4,7 @@
 \alias{mask_from_perm}
 \title{calculate a mask from a list of permutations}
 \usage{
-mask_from_perm(P, R)
+mask_from_perm(P, R, alpha = 0.01)
 }
 \arguments{
 \item{P}{list of permutations, from [corr_permute()]}

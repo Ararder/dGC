@@ -14,6 +14,97 @@ library(dGC)
 library(tidyverse)
 ```
 
+```{r, eval = FALSE}
+data <- read_rds("~/Downloads/jhl_beta_rpkm_munged.rds")
+
+M <- compute_residuals(data$matrix, cells = data$obs$cell, donor_vec = data$obs$donor,ncores = 6)
+data$matrix <- M
+data <- validate_data(data)
+
+tictoc::tic()
+testing <- corr_permute(
+  data,
+  n_iter =100,
+  fit_models = "none",
+  n_ctrl = 5, 
+  n_case = 4,
+  ncores=6,
+)
+tictoc::toc()
+
+
+
+cond <- split(data$obs, data$obs$status)
+
+real_diff <- corr_diff(
+  data$matrix,
+  cond[[1]],
+  cond[[2]],
+  fit_models = "blmer",
+  method = "pearson",
+  ncores = 6
+)
+
+permutations <- testing
+mask <- mask_from_perm(P = permutations, R = real_diff, alpha = 0.05)
+
+real_diff[mask > 0.05] <- 0
+
+
+mask <- mask_from_perm(P = permutations[-12], R =permutations[[12]], alpha = 0.05)
+
+real_diff <- permutations[[12]]
+real_diff[mask > 0.05] <- 0
+normalise_edges <- TRUE
+if(normalise_edges) {
+  real_diff <- real_diff / max(abs(real_diff))
+}
+
+dissTOM <- WGCNA::TOMdist(as.matrix(real_diff), TOMType = "signed")
+hierTOM <- stats::hclust(stats::as.dist(dissTOM), method = "average")
+
+
+
+cutoff <- c(0.974, 0.981, 0.987, 0.992, 0.992)
+deep_split <- c(FALSE, FALSE, FALSE, FALSE, TRUE)
+module_list <- purrr::map2(cutoff, deep_split, \(cut_off, deep) dynamicTreeCut::cutreeDynamic(hierTOM, method = "tree", minClusterSize = 30, cutHeight = cut_off, deepSplit = deep) |> WGCNA::labels2colors())
+
+
+WGCNA::plotDendroAndColors(
+  hierTOM,
+  data.frame(module_list),
+  c("Modules1", "Modules2", "Modules3", "Modules4", "Modules5"),
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05,
+  main = "Hierarchical clustering",
+  autoColorHeight = FALSE
+)
+
+ll <- dplyr::tibble(cluster = module_list[[1]], gene = rownames(M))
+sets <- purrr::map(setdiff(unique(ll$cluster), "grey"), \(clust) dplyr::filter(ll, cluster == clust) |> dplyr::pull(gene)) |>
+  purrr::set_names(setdiff(unique(ll$cluster), "grey"))
+
+
+
+bg_ensgid <- AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, keys = colnames(M), keytype = c("ALIAS"), column = "ENSEMBL")
+gs <- readr::read_rds("inst/extdata/go-terms.rds")
+
+all <- purrr::map(sets, \(set) {
+  gsa(
+    geneset=AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, keys = set, keytype = c("ALIAS"), column = "ENSEMBL"),
+    pathways = gs,
+    backg = bg_ensgid,
+  ) |>
+    dplyr::filter(p_hyper < (0.05 / n_sets_tested))
+
+})
+
+
+
+```
+
 
 ```{r, eval = FALSE}
 load("~/projects/dcgna_t2d/workflow/raw_data/hjerling_leffler/ClusteredData_20210723.RData")
@@ -28,13 +119,14 @@ status <- as.character(TraitsWithCellType["Disease",])
 celltype <- as.character(TraitsWithCellType["CellType",])
 donor <- as.character(TraitsWithCellType["Donor",]) |> janitor::make_clean_names(allow_dupes = TRUE) 
 
+rownames(matrix) <- cell_id
+
 obs <- dplyr::tibble(
   cell = cell_id,
   status = status,
   celltype = celltype,
 )
-rownames(matrix) <- obs$cell
-colnames(matrix)
+
 var <- dplyr::tibble(gene = colnames(matrix))
 
 
@@ -46,21 +138,33 @@ data <- list(
 readr::write_rds(data, "~/projects/dcgna/workflow/t2d/hjerling-leffler_rpkm.rds")
 
 
+data <- readr::read_rds("~/projects/dcgna/workflow/t2d/hjerling-leffler_rpkm.rds")
+
+data <- validate_data(data)
+data$matrix |> dim()
+data$o
+reduced <- prep_cluster_counts(data, "Beta", ct_column = "celltype", prop_cells = 0.3)
+
+  all <-
+    reduced$obs |>
+    dplyr::filter(dataset == "jhl") |>
+    dplyr::count(donor, status) |>
+    dplyr::filter(n >= 20)
+
+  reduced$obs <- dplyr::filter(reduced$obs, donor %in% all$donor)
+  reduced <- validate_data(reduced)
+
+  conditions <- split(reduced$obs,reduced$obs$status)
 
 
-M <- data$matrix
-
-M <- M[obs$celltype =="Beta",]
-min_cells=10
-min_expr=2
-
-m <-M >= min_expr
-g<-row.names(input_mat[rowSums(m)>=min_cells,])
-M[,colSums(m) > 10] |> length()
-
-dim(M)
-
-sum(colSums(m) > 10)
+  real_diff <- corr_diff(
+    reduced$matrix,
+    conditions[[1]],
+    conditions[[2]],
+    fit_models = "blmer",
+    method = "pearson",
+    ncores = 6
+  )
 
 
 
@@ -129,4 +233,5 @@ mask<-GetMaskFromRandomDonors(input_data=sa,sample_groups=states,
 
 saveRDS(mask,file="mask_matrix.rds")
 ```
+
 
