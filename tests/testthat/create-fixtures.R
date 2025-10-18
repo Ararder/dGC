@@ -5,3 +5,8 @@ genesets <- readr::read_tsv("~/projects/dcgna_t2d/workflow/auxiliary_data/genese
 readr::write_rds(geneMatrix,"inst/extdata/geneMatrix.rds")
 
 
+gm <- readr::read_rds("~/Downloads/adolescent_dataset_subsampled.rds")
+
+gm@meta.data |>
+  dplyr::tibble() |>
+  dplyr::count(level_3)

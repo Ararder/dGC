@@ -7,11 +7,10 @@
 corr_permute(
   obj,
   n_iter = 100,
-  residualise = FALSE,
+  fit_models = c("none", "blmer", "lmer", "glmer"),
   method = c("pearson", "spearman"),
   n_ctrl = 10,
   n_case = 10,
-  min_cells = 20,
   replace = FALSE,
   ncores = 1
 )
@@ -21,15 +20,13 @@ corr_permute(
 
 \item{n_iter}{number of iterations to perform}
 
-\item{residualise}{whether to fit a linear-mixed-model to remove donor effects from each gene}
+\item{fit_models}{whether to fit a linear-mixed-model to remove donor effects from each gene}
 
 \item{method}{method for correlation, pearson or spearman}
 
 \item{n_ctrl}{number of donors in "control" correlation group}
 
 \item{n_case}{number of donors in "case" correlation group}
-
-\item{min_cells}{minimum number of cells per donor to include in the analysis}
 
 \item{replace}{whether to sample donors with replacement}
 

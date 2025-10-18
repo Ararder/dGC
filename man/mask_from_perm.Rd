@@ -10,6 +10,8 @@ mask_from_perm(P, R, alpha = 0.01)
 \item{P}{list of permutations, from [corr_permute()]}
 
 \item{R}{a matrix of correlations, e.g. the output from [corr_diff()]}
+
+\item{alpha}{significance level, default is 0.01}
 }
 \value{
 a matrix of the same dimensions as R, with values between 0 and 1 indicating the proportion of permutations that were greater than the observed value in R

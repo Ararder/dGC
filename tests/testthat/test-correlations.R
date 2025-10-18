@@ -35,7 +35,7 @@ test_that("The full pipeline", {
 
   reduced <- prep_cluster_counts(data, "alpha cells", ct_column = "named_celltype", prop_cells = 0.9)
 
-  M <- compute_residuals(reduced$matrix, cells = reduced$obs$cell, donor_vec = reduced$obs$donor,ncores = 6)
+  M <- compute_residuals(reduced$matrix, cells = reduced$obs$cell, donor_vec = reduced$obs$donor, ncores = 6)
   reduced$matrix <- M
   reduced <- validate_data(reduced)
 
@@ -51,10 +51,13 @@ test_that("The full pipeline", {
     ncores = 6
   )
 
+  mask_from_perm/
 
-
-  permutations <- corr_permute(reduced, residualise = FALSE, n_case = 12, n_ctrl = 16, n_iter = 256, ncores=6)
+  permutations <- corr_permute(reduced, fit_models = "none", n_case = 12, n_ctrl = 16, n_iter = 12, ncores=6)
   # t_mask <- mask_from_perm(P = permutations, R = real_diff)
+
+  mask <- mask_from_perm(P = permutations, R = real_diff, alpha = 0.05)
+
 
 
   idx <- 54
@@ -97,6 +100,9 @@ test_that("plotting works", {
     })
   })
 
+
+  real_diff <- readr::read_rds("~/real_diff.rds")
+  results <- network_clustering(real_diff)
   network_clustering <- function(real_diff) {
     real_diff <- real_diff / max(abs(real_diff))
     dissTOM <- WGCNA::TOMdist(as.matrix(real_diff), TOMType = "signed")
@@ -122,7 +128,7 @@ test_that("plotting works", {
       purrr::set_names(setdiff(unique(ll$cluster), "grey"))
 
 
-    bg_ensgid <- AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, keys = colnames(M), keytype = c("ALIAS"), column = "ENSEMBL")
+    bg_ensgid <- AnnotationDbi::mapIds(org.Hs.eg.db::org.Hs.eg.db, keys = colnames(real_diff), keytype = c("ALIAS"), column = "ENSEMBL")
     gs <- readr::read_rds("inst/extdata/go-terms.rds")
 
     all <- purrr::map(sets, \(set) {
@@ -152,7 +158,44 @@ test_that("plotting works", {
 })
 
 
-test_that("works", {
+test_that("mouse", {
   skip()
-  data <- readr::read_rds("~/projects/dcgna/workflow/t2d/hjerling-leffler_rpkm.rds")
+  data <- readr::read_rds("~/projects/dcgna/workflow/22q_mouse/layer2_3.rds")
+  data$var <- dplyr::tibble(gene = data$var)
+  data$matrix <- data$matrix |> Matrix::t()
+  data$obs <- data$obs |> dplyr::rename(donor = mouseID, status = genotype) |>
+    dplyr::filter(nFeature_RNA > 6000)
+
+  data <- validate_data(data)
+
+
+  reduced <- prep_cluster_counts(data, "L2/3 IT Stard8", ct_column = "celltype_annotation", prop_cells = 0.99)
+
+  M <- compute_residuals(reduced$matrix, cells = reduced$obs$cell, donor_vec = reduced$obs$donor,ncores = 6)
+
+
+
+
+  conditions <- split(reduced$obs,reduced$obs$status)
+
+  cond <- list(conditions[[2]], conditions[[1]]) |> purrr::set_names("wt","q22")
+
+
+  real_diff <- corr_diff(
+    reduced$matrix,
+    conditions[[1]],
+    conditions[[2]],
+    fit_models = "none",
+    method = "pearson",
+    ncores = 6
+  )
+
+
+  permuts <- corr_permute(reduced,n_ctrl = 8, n_case=8, ncores =6)
+
+  t_mask <- mask_from_perm(P = permuts, R = real_diff)
+
+
+
+
 })

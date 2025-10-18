@@ -10,6 +10,7 @@ corr_diff(
   obs_2,
   fit_models = c("none", "blmer", "lmer", "glmer"),
   method = c("pearson", "spearman"),
+  formula = stats::as.formula("expr ~ 1 + (1|donor)"),
   ncores = 1
 )
 }
@@ -20,9 +21,11 @@ corr_diff(
 
 \item{obs_2}{a data frame containing cell identifiers and donor information for the second condition}
 
-\item{fit_models}{a character vector indicating whether to fit a linear mixed model to the data, one of "none", "blmer", "lmer", or "glmer"}
+\item{fit_models}{which models to fit}
 
-\item{method}{a character string indicating the method to use for correlation calculation, one of "pearson" or "spearman"}
+\item{method}{correlation method}
+
+\item{formula}{formula for mixed effect model}
 
 \item{ncores}{number of cores to use for parallel processing, default is 1}
 }

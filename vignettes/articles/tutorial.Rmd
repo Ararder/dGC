@@ -1,0 +1,82 @@
+---
+title: "tutorial"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(dGC)
+library(tidyverse)
+```
+
+# Introduction
+dGC (differential gene-correlation) currently accepts single-cell data in
+seurat format.
+
+
+```{r, eval = FALSE}
+data <- read_data("~/projects/dcgna/workflow/t2d/qc_merged_seurat.rds")
+data$matrix <- (data$count_matrix / rowSums(data$count_matrix))*10^6
+reduced <- prep_cluster_counts(data, "beta cells", ct_column = "named_celltype", prop_cells = 0.9)
+```
+
+
+```{r, eval = FALSE}
+mirai::daemons(3)
+run_dgc(
+  reduced, 
+  split_by = "status", 
+  n_iter =3, 
+  fit_models = "blmer",
+  dir = tempdir()
+  )
+
+```
+
+```{r}
+
+
+
+# conditions <- split(reduced$obs,reduced$obs$status)
+
+real_diff <- corr_diff(
+  reduced$matrix,
+  conditions[[1]],
+  conditions[[2]],
+  fit_models = "blmer",
+  method = "pearson",
+  ncores = 4
+)
+```
+
+```{r}
+corr_permute(
+  
+)
+```
+
+
+
+
+# 
+
+```{r}
+example$obs |> 
+  mutate(ll = str_c(status,":", dataset)) |> 
+  ggplot(aes(log10(nCount_RNA), color = ll)) +
+  geom_density()
+
+
+example$obs |> 
+  mutate(ll = str_c(status,":", dataset)) |> 
+  ggplot(aes(log10(nCount_RNA))) +
+  geom_density() +
+  facet_wrap(~donor)
+```
+
+

@@ -1,6 +1,74 @@
 
-utils::globalVariables(c("donor", ""))
+utils::globalVariables(c("donor", "cell"))
 
+
+
+
+#' prep_cluster counts perform basic subsetting prior to running dGC.
+#' cells are filtered to a single cell-type and genes are reduced by considering
+#' the proportion of cells they are expressed in.
+#'
+#'
+#'
+#' @param obj dGA object
+#' @param ct celltype, "beta cells"
+#' @param ct_column column of celltypes
+#' @param prop_cells proportion of cells that need to express a gene to be kept
+#'
+#' @returns a list
+#' @export
+#'
+#' @examples \dontrun{
+#' prep_cluster_counts(obj, ct = "beta cells", ct_column = "named_celltype", prop_cells = 0.9)
+#' }
+prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cells = 0.9) {
+  # Input validation
+  rlang::check_required(ct)
+  rlang::check_required(ct_column)
+  rlang::check_required(obj)
+
+
+  obs_df <- obj[["obs"]]
+  var_df <- obj[["var"]]
+
+  # Filter cells by cell type
+  obs_df <- dplyr::filter(obs_df, .data[[ct_column]] == ct)
+  sel_cells <- obs_df[["cell"]]
+  n_cells_selected <- length(sel_cells)
+
+
+  if (n_cells_selected == 0) {
+    cli::cli_abort("No cells were found for cell type: ", ct)
+  }
+
+
+  cli::cli_inform("Selected {.emph {n_cells_selected}} cells of type '{ct}'")
+
+  # Subset matrix and calculate gene filtering threshold
+  M <- obj[["matrix"]]
+  sub_M <- M[sel_cells, , drop = FALSE]
+  min_cells_threshold <- as.integer(n_cells_selected * prop_cells)
+
+  # Filter genes based on expression frequency
+  genes_expressed_count <- Matrix::colSums(sub_M > 0)
+  gene_index <- genes_expressed_count >= min_cells_threshold
+  n_genes_kept <- sum(gene_index)
+
+  cli::cli_alert_success("Keeping {n_genes_kept} genes expressed in > {prop_cells*100}% of cells")
+
+  # Apply gene filtering and log transformation
+  sub_M <- sub_M[, gene_index, drop = FALSE]
+  sub_M@x <- log2(sub_M@x + 1)
+  var_df <- dplyr::tibble(gene = colnames(sub_M)) |> dplyr::semi_join(var_df, by = "gene")
+
+  cli::cli_alert_info("Selected {.emph {length(rownames(sub_M))}} cells and {.emph {length(colnames(sub_M))}} genes")
+
+  list(
+    matrix = sub_M,
+    obs = obs_df,
+    var = var_df
+  )
+}
 
 
 
@@ -12,7 +80,6 @@ utils::globalVariables(c("donor", ""))
 #' @param method method for correlation, pearson or spearman
 #' @param n_ctrl number of donors in "control" correlation group
 #' @param n_case number of donors in "case" correlation group
-#' @param min_cells minimum number of cells per donor to include in the analysis
 #' @param replace whether to sample donors with replacement
 #' @param ncores number of cores to use for parallel processing
 #'
@@ -28,6 +95,7 @@ corr_permute <- function(
     n_ctrl=10, n_case =10, replace=FALSE,ncores=1
     ) {
   method <- rlang::arg_match(method)
+  fit_models <- rlang::arg_match(fit_models)
 
   all_donors <- dplyr::count(obj$obs, donor) |>
     dplyr::pull(donor)
@@ -61,6 +129,61 @@ corr_permute <- function(
 }
 
 
+#' Calculate the difference in Gene-Gene correlation across two conditions
+#'
+#' @param M a matrix of gene expression values, with genes as columns and cells as rows
+#' @param obs_1 a data frame containing cell identifiers and donor information for the first condition
+#' @param obs_2 a data frame containing cell identifiers and donor information for the second condition
+#' @inheritParams run_dgc
+#' @param ncores number of cores to use for parallel processing, default is 1
+#'
+#' @returns a matrix of the difference in correlation between the two conditions
+#' @export
+#'
+#' @examples \dontrun{
+#' corr_diff(M, obs_1, obs_2, fit_models = "blmer", method = "pearson", ncores = 4)
+#' }
+corr_diff <- function(
+    M,
+    obs_1,
+    obs_2,
+    fit_models = c("none", "blmer", "lmer","glmer"),
+    method = c("pearson", "spearman"),
+    formula = stats::as.formula("expr ~ 1 + (1|donor)"),
+    ncores=1
+    ) {
+  cli::cli_h2("Calculating a correlation difference matrix")
+  method <- rlang::arg_match(method)
+  fit_models <- rlang::arg_match(fit_models)
+
+  if(fit_models == "none") {
+    m1 <- Matrix::Matrix(M)[obs_1$cell, , drop = FALSE]
+    m2 <- Matrix::Matrix(M)[obs_2$cell, , drop = FALSE]
+  } else {
+    cli::cli_alert_info("Residualizing expression values using a {fit_models} model")
+    cli::cli_alert_info("Condition 1: {nrow(obs_1)} cells from {length(unique(obs_1$donor))} donors")
+    m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, ncores = ncores, engine = fit_models, formula=formula)
+    cli::cli_alert_info("Condition 2: {nrow(obs_2)} cells from {length(unique(obs_2$donor))} donors")
+    m2 <- compute_residuals(matrix = M, cells = obs_2$cell, donor_vec = obs_2$donor, ncores = ncores, engine = fit_models, formula=formula)
+  }
+
+  cor_cond1 <- stats::cor(as.matrix(m1), method = method)
+  cor_cond2 <- stats::cor(as.matrix(m2), method = method)
+
+  cor_cond2 - cor_cond1
+}
+
+sample_donors <- function(all_donors, n_ctrl, n_case, replace) {
+  group1 <- sample(all_donors, size = n_ctrl, replace = replace)
+  group2 <- sample(setdiff(all_donors, group1), size = n_case, replace = replace)
+
+  list(
+    group1 = group1,
+    group2 = group2
+  )
+}
+
+
 
 corr_permute_diff <- function(M, obs, all_donors, n_ctrl, n_case, replace, fit_models, method,ncores=1) {
   # sample donors in the specified structure
@@ -80,39 +203,6 @@ corr_permute_diff <- function(M, obs, all_donors, n_ctrl, n_case, replace, fit_m
 }
 
 
-#' Calculate the difference in Gene-Gene correlation across two conditions
-#'
-#' @param M a matrix of gene expression values, with genes as columns and cells as rows
-#' @param obs_1 a data frame containing cell identifiers and donor information for the first condition
-#' @param obs_2 a data frame containing cell identifiers and donor information for the second condition
-#' @param fit_models a character vector indicating whether to fit a linear mixed model to the data, one of "none", "blmer", "lmer", or "glmer"
-#' @param method a character string indicating the method to use for correlation calculation, one of "pearson" or "spearman"
-#' @param ncores number of cores to use for parallel processing, default is 1
-#'
-#' @returns a matrix of the difference in correlation between the two conditions
-#' @export
-#'
-#' @examples \dontrun{
-#' corr_diff(M, obs_1, obs_2, fit_models = "blmer", method = "pearson", ncores = 4)
-#' }
-corr_diff <- function(M, obs_1, obs_2, fit_models =c("none", "blmer", "lmer","glmer"), method = c("pearson", "spearman"), ncores=1) {
-
-  method <- rlang::arg_match(method)
-  fit_models <- rlang::arg_match(fit_models)
-
-  if(fit_models == "none") {
-    m1 <- Matrix::Matrix(M)[obs_1$cell, , drop = FALSE]
-    m2 <- Matrix::Matrix(M)[obs_2$cell, , drop = FALSE]
-  } else {
-    m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, ncores = ncores, engine = fit_models)
-    m2 <- compute_residuals(matrix = M, cells = obs_2$cell, donor_vec = obs_2$donor, ncores = ncores, engine = fit_models)
-  }
-
-  cor_cond1 <- stats::cor(as.matrix(m1), method = method)
-  cor_cond2 <- stats::cor(as.matrix(m2), method = method)
-
-  cor_cond2 - cor_cond1
-}
 
 
 
@@ -201,19 +291,21 @@ mask_from_perm <- function(P, R,alpha=0.01) {
   neg_edges <- R < 0
 
   for(i in seq_along(P)) {
-    perm <- P[[i]]
-    mask <- mask + (abs(R) > abs(perm))
 
-    # for sign tested, test only against instances where the sign is the same
-    pos_test_mask <- perm > 0 & pos_edges
-    test_result <- R > perm
-    mask_pos[pos_test_mask] <- mask_pos[pos_test_mask] + test_result[pos_test_mask]
-    pos_increment[pos_test_mask] <- pos_increment[pos_test_mask] + 1
+      perm <- P[[i]]
+      mask <- mask + (abs(R) > abs(perm))
 
-    neg_test_mask <- perm < 0 & neg_edges
-    test_result <- R < perm
-    mask_neg[neg_test_mask] <- mask_neg[neg_test_mask] + test_result[neg_test_mask]
-    neg_increment[neg_test_mask] <- neg_increment[neg_test_mask] + 1
+      # for sign tested, test only against instances where the sign is the same
+      pos_test_mask <- perm > 0 & pos_edges
+      test_result <- R > perm
+      mask_pos[pos_test_mask] <- mask_pos[pos_test_mask] + test_result[pos_test_mask]
+      pos_increment[pos_test_mask] <- pos_increment[pos_test_mask] + 1
+
+      neg_test_mask <- perm < 0 & neg_edges
+      test_result <- R < perm
+      mask_neg[neg_test_mask] <- mask_neg[neg_test_mask] + test_result[neg_test_mask]
+      neg_increment[neg_test_mask] <- neg_increment[neg_test_mask] + 1
+
 
 
   }
@@ -259,53 +351,46 @@ mask_from_perm <- function(P, R,alpha=0.01) {
 
 
 
-perm_gene_test <- function(P, R) {
-  G = nrow(R)
-  N = length(P)
-
-
-  # future::plan(future::multisession, workers = ncores)
-  gene_null_distrib <- purrr::map(seq_along(P[1:25]), \(idx){
-    p_iter <- P[[idx]]
-
-    mask_x <- mask_from_perm(
-      P = P[-idx],
-      R = p_iter
-    )
-
-
-    R[mask_x > 0.025] <- 0
-    R[mask_x < 0.025] <- 1
-
-    edges <- rowSums(R)
-
-    as.matrix(edges)
-
-  },.progress = list(type = "tasks"))
-
-
-  # null_dist <- purrr::reduce(gene_null_distrib, cbind)
-  # row_max <- apply(null_dist, 1, max)
-  #
-  # mask <- mask_from_perm(P, R)
-  # R[mask > 0.025] <- 0
-  # R[mask < 0.025] <- 1
-  # edges <- rowSums(R)
-  # obs <- dplyr::tibble(links = edges, genes = names(edges))
-  # null_res <- dplyr::tibble(links = row_max, genes = names(row_max))
-  # dplyr::inner_join(obs, null_res,by = "genes") |>
-  #   dplyr::mutate(diff = links.x - links.y) |>
-  #   dplyr::filter(links.x > links.y) |>
-  #   print(n = 21)
-
-
-
-
-
-
-
-
-}
+# perm_gene_test <- function(P, R) {
+#   G = nrow(R)
+#   N = length(P)
+#
+#
+#   # future::plan(future::multisession, workers = ncores)
+#   gene_null_distrib <- purrr::map(seq_along(P[1:25]), \(idx){
+#     p_iter <- P[[idx]]
+#
+#     mask_x <- mask_from_perm(
+#       P = P[-idx],
+#       R = p_iter
+#     )
+#
+#
+#     R[mask_x > 0.025] <- 0
+#     R[mask_x < 0.025] <- 1
+#
+#     edges <- rowSums(R)
+#
+#     as.matrix(edges)
+#
+#   },.progress = list(type = "tasks"))
+#
+#
+#   # null_dist <- purrr::reduce(gene_null_distrib, cbind)
+#   # row_max <- apply(null_dist, 1, max)
+#   #
+#   # mask <- mask_from_perm(P, R)
+#   # R[mask > 0.025] <- 0
+#   # R[mask < 0.025] <- 1
+#   # edges <- rowSums(R)
+#   # obs <- dplyr::tibble(links = edges, genes = names(edges))
+#   # null_res <- dplyr::tibble(links = row_max, genes = names(row_max))
+#   # dplyr::inner_join(obs, null_res,by = "genes") |>
+#   #   dplyr::mutate(diff = links.x - links.y) |>
+#   #   dplyr::filter(links.x > links.y) |>
+#   #   print(n = 21)
+#
+# }
 
 
 
