@@ -56,18 +56,29 @@ reduced <- prep_cluster_counts(
   data, 
   ct = "Upper-layer intratelencephalic", 
   ct_column = "celltype", 
-  prop_cells = 0.6
+  prop_cells = 0.95
 )
 obj <- reduced
-obj$obs <- obj$obs |> mutate(donor = as.character(subject_id))
-
-obj$obs <- obj$obs |> filter(sequencing_id %in% c("LS11", "LS12"))
+obj$obs <- obj$obs |> dplyr::mutate(donor = as.character(subject_id))
+obj$obs <- obj$obs |> dplyr::filter(sequencing_id %in% c("LS11", "LS12"))
 obj <- validate_data(obj)
 
 
-
 dir <- file.path(tempdir(), "dgc") |> fs::dir_create()
-# daemons(4)
+
+setup_dgc(
+  obj,
+  split_by = "case",
+  fit_models = "blmer",
+  method = "pearson",
+  dir = dir,
+  n_iter =4
+)
+
+mirai::daemons(4)
+run_permutations(dir)
+
+.# daemons(4)
 tictoc::tic()
 run_dgc(
   obj = obj,

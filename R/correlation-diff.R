@@ -2,6 +2,81 @@
 utils::globalVariables(c("donor", "cell"))
 
 
+
+
+#' Setup the analysis for differential gene-correlation
+#'
+#' @param obj an object created by [read_data()]
+#' @param split_by column to split by - the `condition` column
+#' @param n_iter number of iterations for bootstrap
+#' @param fit_models regress out donor effects?
+#' @param method pearson or spearman for correlation?
+#' @param formula formula for fit_models
+#' @param min_cells_per_donor minimum number of cells per donor
+#' @param replace allow replacement in permutation?
+#' @param dir directory to setup analysis in
+#'
+#' @returns NULL
+#' @export
+#'
+#' @examples \dontrun{
+#' setup_dgc(obj, "case")
+#'}
+#'
+setup_dgc <- function(
+    obj,
+    split_by = "condition",
+    n_iter=100,
+    fit_models = c("none", "blmer", "lmer","glmer"),
+    method = c("pearson","spearman"),
+    formula = stats::as.formula("expr ~ 1 + (1|donor)"),
+    min_cells_per_donor = 10,
+    replace=FALSE,
+    dir = NULL
+) {
+
+  # check args --------------------------------------------------------------
+  method <- rlang::arg_match(method)
+  fit_models <- rlang::arg_match(fit_models)
+  if(is.null(dir)) {
+    dir <- getwd()
+  } else {
+    file.exists(dir) || cli::cli_abort("Output directory: {dir} does not exist")
+  }
+
+  cli::cli_h1("Starting dGC pipeline")
+
+  # min cells per dono
+  all_donors <- dplyr::count(obj$obs, donor) |>
+    dplyr::filter(.data[["n"]] >= min_cells_per_donor) |>
+    dplyr::pull(donor)
+
+  n_per_cond <- dplyr::filter(obj$obs, donor %in% all_donors) |>
+    dplyr::group_by(.data[[split_by]]) |>
+    dplyr::summarise(n = dplyr::n_distinct(donor))
+
+  n_control <- n_per_cond$n[1]
+  n_case <- n_per_cond$n[2]
+
+
+  M <- obj$matrix
+  obs <- obj$obs
+
+
+  cli::cli_inform("Splitting by {split_by}")
+  split_by %in% colnames(obs) || cli::cli_abort("Could not find column {split_by} in obs data.frame")
+  cond <- split(obs, obs[[split_by]])
+
+
+  permutation_labels <- purrr::map(1:n_iter, \(i)  sample_donors(all_donors, n_control, n_case, replace))
+  readr::write_rds(permutation_labels ,file = file.path(dir, "permutation_labels.rds"), compress = "gz")
+  readr::write_rds(M,file = file.path(dir, "M.rds"), compress = "gz")
+  readr::write_rds(obs,file = file.path(dir, "obs.rds"), compress = "gz")
+  readr::write_rds(list(fit_models = fit_models,method = method,formula = formula), file = file.path(dir, "arg.rds"))
+
+}
+
+
 #' Run differential gene-correlation analysis
 #' results are saved in `dir`, which defaults to the working directory
 #'
@@ -85,29 +160,12 @@ run_dgc <- function(
   rm(real_diff)
   gc()
 
-  run_permutations(
-    n_iter = n_iter,
-    permutation_labels = permutation_labels,
-    M = M,
-    obs = obs,
-    fit_models = fit_models,
-    formula = formula,
-    method = method
-
-  )
-
-
-
 
 }
 
 #' Generate permutations
 #'
-#' @param n_iter number of iterations
-#' @param permutation_labels permutation list
-#' @param M Matrix
-#' @param obs observation df
-#' @inheritParams  run_dgc
+#' @param dir directory where [setup_dgc()] has created data
 #'
 #' @returns NULL
 #' @export
@@ -116,9 +174,27 @@ run_dgc <- function(
 #' run_permutations(100, labels, M, obs)
 #' }
 #'
-run_permutations <- function(n_iter, permutation_labels, M, obs, fit_models, formula, method) {
+run_permutations <- function(
+    dir
+    ) {
+
+
+  params <- readr::read_rds(file.path(dir, "arg.rds"))
+
+  # 2. Extract variables (and convert formula back)
+  method <- params$method
+  fit_models  <- params$fit_models
+  formula <- stats::as.formula(params$formula)
+
+
+  permutation_labels <- readr::read_rds(file = file.path(dir, "permutation_labels.rds"))
+  obs <- readr::read_rds(file = file.path(dir, "obs.rds"))
+  n_iter <- length(permutation_labels)
+
   purrr::walk(1:n_iter, purrr::in_parallel(function(i) {
     cli::cli_h1("Generating permutation {i}")
+
+    M <- readr::read_rds(file = file.path(dir, "M.rds"))
 
     d1 <- permutation_labels[[i]][[1]]
     d2 <- permutation_labels[[i]][[2]]
@@ -138,10 +214,9 @@ run_permutations <- function(n_iter, permutation_labels, M, obs, fit_models, for
 
   }, .progress = list(type = "tasks", name = "computing permutations"),
   permutation_labels = permutation_labels,
-  corr_diff = dGC::corr_diff,
-  M = M,
-  dir = dir,
   obs = obs,
+  corr_diff = dGC::corr_diff,
+  dir = dir,
   fit_models = fit_models,
   formula = formula,
   method = method

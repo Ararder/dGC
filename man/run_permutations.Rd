@@ -4,30 +4,10 @@
 \alias{run_permutations}
 \title{Generate permutations}
 \usage{
-run_permutations(
-  n_iter,
-  permutation_labels,
-  M,
-  obs,
-  fit_models,
-  formula,
-  method
-)
+run_permutations(dir)
 }
 \arguments{
-\item{n_iter}{number of iterations}
-
-\item{permutation_labels}{permutation list}
-
-\item{M}{Matrix}
-
-\item{obs}{observation df}
-
-\item{fit_models}{which models to fit}
-
-\item{formula}{formula for mixed effect model}
-
-\item{method}{correlation method}
+\item{dir}{directory where [setup_dgc()] has created data}
 }
 \description{
 Generate permutations
