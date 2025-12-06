@@ -2,11 +2,10 @@
 
 export(compute_residuals)
 export(corr_diff)
-export(corr_permute)
 export(gsa)
-export(mask_from_perm)
 export(prep_cluster_counts)
 export(read_data)
 export(run_dgc)
+export(run_permutations)
 export(validate_data)
 importFrom(dplyr,.data)

@@ -12,11 +12,12 @@ knitr::opts_chunk$set(
 ```{r setup}
 library(dGC)
 library(tidyverse)
+library(mirai)
 ```
 
 
 ```{r, eval=FALSE}
-data <- read_data("~/projects/dcgna/workflow/t2d/qc_merged_seurat.rds")
+data <- read_data("~/projects/scz-smartseq3/workflow/tmp.rds")
 
 d1 <- dplyr::filter(data$obs, dataset == "sandberg")
 m <- data$count_matrix[d1$cell, ]
@@ -48,3 +49,61 @@ if(normalise_edges) {
 
 
 ```
+
+```{r}
+data <- read_data("~/projects/scz-smartseq3/workflow/tmp.rds")
+reduced <- prep_cluster_counts(
+  data, 
+  ct = "Upper-layer intratelencephalic", 
+  ct_column = "celltype", 
+  prop_cells = 0.6
+)
+obj <- reduced
+obj$obs <- obj$obs |> mutate(donor = as.character(subject_id))
+
+obj$obs <- obj$obs |> filter(sequencing_id %in% c("LS11", "LS12"))
+obj <- validate_data(obj)
+
+
+
+dir <- file.path(tempdir(), "dgc") |> fs::dir_create()
+# daemons(4)
+tictoc::tic()
+run_dgc(
+  obj = obj,
+  split_by = "case",
+  dir = dir,
+  n_iter = 2
+)
+tictoc::toc()
+res <- mask_from_perm(
+  dir = fs::path(tempdir(), "dgc2"), 
+  alpha = 0.05
+  )
+
+
+R <- readr::read_rds(file.path(dir, "real_diff.rds"))
+P_path <- fs::dir_ls(dir, glob ="*perm_diff*")
+mask <- mask_from_perm(R, P_path)
+
+
+
+real_diff <- R
+real_diff[mask > 0.05] <- 0
+real_diff <- real_diff / max(abs(real_diff))
+M <- real_diff
+```
+
+```{r}
+data <- read_rds("/Users/arvid.harder/jhl_beta_rpkm_munged.rds")
+# data2 <- read_rds("/Users/arvid.harder/hjerling-leffler_rpkm.rds")
+data2$count_matrix <- data2$matrix
+reduced <- prep_cluster_counts(data2, "Beta", ct_column = "celltype", prop_cells = 0.95)
+obj <- reduced
+obj$obs <- obj$obs |> mutate(donor = as.character(subject_id))
+
+obj$obs <- obj$obs |> filter(sequencing_id %in% c("LS11", "LS12"))
+obj <- validate_data(obj)
+```
+
+
