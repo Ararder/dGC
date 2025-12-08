@@ -1,5 +1,5 @@
 
-utils::globalVariables(c("donor", "cell", "donoc_vec"))
+utils::globalVariables(c("donor", "cell"))
 
 
 
@@ -292,7 +292,7 @@ compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), cells
           )
         },
       matrix = matrix,
-      donoc_vec = donoc_vec,
+      donor_vec = donor_vec,
       engine = engine
       ))
 

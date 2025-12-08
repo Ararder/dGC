@@ -3,9 +3,8 @@ test_that("reduce matrix works", {
   data <- read_data("~/Downloads/qc_merged_seurat.rds")
 
 
-  data
-  ct <- "beta cells"
-  ct_column <- "named_celltype"
+
+
 
   reduced <- prep_cluster_counts(data, "beta cells", ct_column = "named_celltype", prop_cells = 0.6)
   dir <- fs::dir_create(tempdir(), "dgc")
