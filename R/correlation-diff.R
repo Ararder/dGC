@@ -1,5 +1,5 @@
 
-utils::globalVariables(c("donor", "cell"))
+utils::globalVariables(c("donor", "cell", "donoc_vec"))
 
 
 
@@ -151,8 +151,7 @@ run_dgc <- function(
     obs_2 = cond[[2]],
     fit_models = fit_models,
     formula = formula,
-    method = method,
-    ncores = 1
+    method = method
   )
   readr::write_rds(real_diff, file = file.path(dir, "real_diff.rds"), compress = "gz")
 
@@ -195,17 +194,18 @@ run_permutations <- function(
     cli::cli_h1("Generating permutation {i}")
 
     M <- readr::read_rds(file = file.path(dir, "M.rds"))
+    permutation_labels <- readr::read_rds(file = file.path(dir, "permutation_labels.rds"))
+    obs <- readr::read_rds(file = file.path(dir, "obs.rds"))
 
     d1 <- permutation_labels[[i]][[1]]
     d2 <- permutation_labels[[i]][[2]]
-    diff <- corr_diff(
+    diff <- dGC::corr_diff(
       M = M,
       obs_1 = dplyr::filter(obs, donor %in% d1),
       obs_2 = dplyr::filter(obs, donor %in% d2),
       fit_models = fit_models,
       formula = formula,
-      method = method,
-      ncores = 1
+      method = method
     )
 
     readr::write_rds(diff, file = file.path(dir, paste0("perm_diff_", i, ".rds")), compress = "gz")
@@ -213,9 +213,6 @@ run_permutations <- function(
     gc()
 
   }, .progress = list(type = "tasks", name = "computing permutations"),
-  permutation_labels = permutation_labels,
-  obs = obs,
-  corr_diff = dGC::corr_diff,
   dir = dir,
   fit_models = fit_models,
   formula = formula,
@@ -232,13 +229,12 @@ run_permutations <- function(
 #' @param obs_1 a data frame containing cell identifiers and donor information for the first condition
 #' @param obs_2 a data frame containing cell identifiers and donor information for the second condition
 #' @inheritParams run_dgc
-#' @param ncores number of cores to use for parallel processing, default is 1
 #'
 #' @returns a matrix of the difference in correlation between the two conditions
 #' @export
 #'
 #' @examples \dontrun{
-#' corr_diff(M, obs_1, obs_2, fit_models = "blmer", method = "pearson", ncores = 4)
+#' corr_diff(M, obs_1, obs_2, fit_models = "blmer", method = "pearson")
 #' }
 corr_diff <- function(
     M,
@@ -246,8 +242,7 @@ corr_diff <- function(
     obs_2,
     fit_models = c("none", "blmer", "lmer","glmer"),
     method = c("pearson", "spearman"),
-    formula = stats::as.formula("expr ~ 1 + (1|donor)"),
-    ncores=1
+    formula = stats::as.formula("expr ~ 1 + (1|donor)")
 ) {
   cli::cli_h2("Calculating a correlation difference matrix")
   method <- rlang::arg_match(method)
@@ -259,9 +254,9 @@ corr_diff <- function(
   } else {
     cli::cli_alert_info("Residualizing expression values using a {fit_models} model")
     cli::cli_alert_info("Condition 1: {nrow(obs_1)} cells from {length(unique(obs_1$donor))} donors")
-    m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, ncores = ncores, engine = fit_models, formula=formula)
+    m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, engine = fit_models, formula=formula)
     cli::cli_alert_info("Condition 2: {nrow(obs_2)} cells from {length(unique(obs_2$donor))} donors")
-    m2 <- compute_residuals(matrix = M, cells = obs_2$cell, donor_vec = obs_2$donor, ncores = ncores, engine = fit_models, formula=formula)
+    m2 <- compute_residuals(matrix = M, cells = obs_2$cell, donor_vec = obs_2$donor, engine = fit_models, formula=formula)
   }
 
   cor_cond1 <- stats::cor(as.matrix(m1), method = method)
@@ -280,7 +275,6 @@ corr_diff <- function(
 #' @param formula a formula to use for the model, default is "expr ~ 1 + (1|donor)"
 #' @param cells a vector of cell identifiers to use, if NULL all cells are used
 #' @param donor_vec a vector of donor identifiers, must be the same length as cells
-#' @param ncores number of cores to use for parallel processing, default is 1
 #'
 #' @returns a list()
 #' @export
@@ -288,7 +282,7 @@ corr_diff <- function(
 #' @examples \dontrun{
 #' compute_residuals(count_matrix)
 #' }
-compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), formula = stats::as.formula("expr ~ 1 + (1|donor)"), cells=NULL, donor_vec, ncores=1) {
+compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), formula = stats::as.formula("expr ~ 1 + (1|donor)"), cells=NULL, donor_vec) {
   engine <- rlang::arg_match(engine)
   stopifnot(length(cells) == length(donor_vec))
   if(!is.null(cells)) {
@@ -296,18 +290,24 @@ compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), formu
   }
   stopifnot(nrow(matrix) == length(cells))
 
-  if(ncores > 1) {
-    future::plan(future::multisession, workers = ncores)
-    res <- furrr::future_map(1:ncol(matrix), \(idx) {
-      fit_model(expr = Matrix::Matrix(matrix)[, idx], donor_vec = donor_vec, formula = formula, engine = engine)
-    }, .progress = TRUE)
 
-  } else {
-    res <- purrr::map(1:ncol(matrix), \(idx) {
-      fit_model(expr= Matrix::Matrix(matrix)[, idx], donor_vec = donor_vec, formula = formula, engine = engine)
-    }, .progress = list(type = "tasks"))
+  res <- purrr::map(
+    1:ncol(matrix),
+    purrr::in_parallel(
+      \(idx) {
+        fit_model(
+          expr= Matrix::Matrix(matrix)[, idx],
+          donor_vec = donor_vec,
+          formula = formula,
+          engine = engine
+          )
+        },
+      matrix = matrix,
+      donoc_vec = donoc_vec,
+      formula = formula,
+      engine = engine
+      ))
 
-  }
 
   M <- do.call(cbind, res)
   rownames(M) <- cells

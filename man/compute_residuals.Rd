@@ -9,8 +9,7 @@ compute_residuals(
   engine = c("blmer", "lmer", "glmer"),
   formula = stats::as.formula("expr ~ 1 + (1|donor)"),
   cells = NULL,
-  donor_vec,
-  ncores = 1
+  donor_vec
 )
 }
 \arguments{
@@ -23,8 +22,6 @@ compute_residuals(
 \item{cells}{a vector of cell identifiers to use, if NULL all cells are used}
 
 \item{donor_vec}{a vector of donor identifiers, must be the same length as cells}
-
-\item{ncores}{number of cores to use for parallel processing, default is 1}
 }
 \value{
 a list()

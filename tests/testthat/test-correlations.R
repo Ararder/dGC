@@ -35,7 +35,7 @@ test_that("The full pipeline", {
 
   reduced <- prep_cluster_counts(data, "alpha cells", ct_column = "named_celltype", prop_cells = 0.9)
 
-  M <- compute_residuals(reduced$matrix, cells = reduced$obs$cell, donor_vec = reduced$obs$donor, ncores = 6)
+  M <- compute_residuals(reduced$matrix, cells = reduced$obs$cell, donor_vec = reduced$obs$donor)
   reduced$matrix <- M
   reduced <- validate_data(reduced)
 

@@ -10,8 +10,7 @@ corr_diff(
   obs_2,
   fit_models = c("none", "blmer", "lmer", "glmer"),
   method = c("pearson", "spearman"),
-  formula = stats::as.formula("expr ~ 1 + (1|donor)"),
-  ncores = 1
+  formula = stats::as.formula("expr ~ 1 + (1|donor)")
 )
 }
 \arguments{
@@ -26,8 +25,6 @@ corr_diff(
 \item{method}{correlation method}
 
 \item{formula}{formula for mixed effect model}
-
-\item{ncores}{number of cores to use for parallel processing, default is 1}
 }
 \value{
 a matrix of the difference in correlation between the two conditions
@@ -37,6 +34,6 @@ Calculate the difference in Gene-Gene correlation across two conditions
 }
 \examples{
 \dontrun{
-corr_diff(M, obs_1, obs_2, fit_models = "blmer", method = "pearson", ncores = 4)
+corr_diff(M, obs_1, obs_2, fit_models = "blmer", method = "pearson")
 }
 }
