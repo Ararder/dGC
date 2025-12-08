@@ -285,7 +285,7 @@ compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), cells
     1:ncol(matrix),
     purrr::in_parallel(
       \(idx) {
-        fit_model(
+        dGC::fit_model(
           expr= Matrix::Matrix(matrix)[, idx],
           donor_vec = donor_vec,
           engine = engine
@@ -304,6 +304,18 @@ compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), cells
   M
 }
 
+#' Fit a regression model to gene expression
+#'
+#' @param expr column of gene expression
+#' @param donor_vec donor vector
+#' @param engine engine to ues
+#'
+#' @returns a vector of residuals
+#' @export
+#'
+#' @examples \dontrun{
+#' fit_model(gene, donors, "blmer")
+#' }
 fit_model <- function(expr, donor_vec, engine) {
 
   df <- dplyr::tibble(expr = expr, donor = donor_vec)

@@ -56,7 +56,7 @@ test_that("The full pipeline", {
     ncores = 6
   )
 
-  mask_from_perm/
+  mask_from_perm
 
   permutations <- corr_permute(reduced, fit_models = "none", n_case = 12, n_ctrl = 16, n_iter = 12, ncores=6)
   # t_mask <- mask_from_perm(P = permutations, R = real_diff)

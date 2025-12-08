@@ -2,6 +2,7 @@
 
 export(compute_residuals)
 export(corr_diff)
+export(fit_model)
 export(gsa)
 export(prep_cluster_counts)
 export(read_data)
