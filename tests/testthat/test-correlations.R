@@ -1,12 +1,50 @@
 test_that("reduce matrix works", {
   skip()
+
+
+
   data <- read_data("~/Downloads/qc_merged_seurat.rds")
+  reduced <- prep_cluster_counts(data, "beta cells", ct_column = "named_celltype", prop_cells = 0.5)
+
+  matrix <- reduced$matrix
+  engine <- "blmer"
+  donor_vec <- reduced$obs$donor
 
 
 
 
+  # -------------------------------------------------------------------------
+  tmp <- fs::dir_create(file.path(tempdir(), "dgc"))
+  setup_dgc(
+    obj = reduced,
+    split_by = "status",
+    n_iter = 6,
+    fit_models = "blmer",
+    dir = tmp
+  )
 
-  reduced <- prep_cluster_counts(data, "beta cells", ct_column = "named_celltype", prop_cells = 0.6)
+  mirai::daemons(2)
+  run_permutations(
+    tmp,
+    ncores =3
+  )
+
+
+  conds <- split(reduced$obs, reduced$obs$status)
+  tictoc::tic()
+  tt <- corr_diff(
+    M = reduced$matrix,
+    obs_1 = conds[[1]],
+    obs_2 = conds[[2]],
+    fit_models = "blmer",
+    ncores = 6
+  )
+  tictoc::toc()
+  # This compares both approaches in one table
+
+
+
+  compute_residuals(reduced$matrix, cells = reduced$obs$cell, donor_vec = reduced$obs$donor, ncores =4)
   dir <- fs::dir_create(tempdir(), "dgc")
   setup_dgc(
     reduced,
@@ -18,6 +56,12 @@ test_that("reduce matrix works", {
 
   mirai::daemons(2)
   run_permutations(dir)
+
+
+
+
+
+
 
 
 
@@ -200,6 +244,55 @@ test_that("mouse", {
 
   t_mask <- mask_from_perm(P = permuts, R = real_diff)
 
+
+
+
+})
+
+test_that("parallel", {
+  skip()
+  # last version, apache arrow parallelisation
+  dd <- fs::dir_create(fs::path(tempdir(), "dgc"))
+  dplyr::as_tibble(as.matrix(matrix), rownames = "cell") |>
+    dplyr::inner_join(dplyr::select(obs,donor,cell)) |>
+    dplyr::select(-cell) |>
+    arrow::write_parquet(fs::path(dd, "file", ext = "parquet"))
+
+  dns <- obs$donor |> unique()
+  dnrs <- dns[1:10]
+  ds <- arrow::open_dataset(fs::path(dd, "file", ext = "parquet"))
+  genes <- colnames(ds)[-length(colnames(ds))]
+
+
+  path = fs::path(dd, "file", ext = "parquet")
+  mirai::daemons(4)
+
+  res <- mirai::mirai_map(genes, \(x)
+                   fit_models_pq(gene =x, path = path, dns = dns, engine = engine),
+                   path = path, dns = dns, engine = engine, fit_models_pq  =fit_models_pq
+  )[.progress]
+
+
+  fit_models_pq <- function(gene, dns = dns, engine, path) {
+    dl <-
+      arrow::read_parquet(path, col_select = dplyr::all_of(c("donor", gene))) |>
+      dplyr::filter(donor %in% dns)
+    dGC::fit_model(expr = dl[[2]], donor_vec = dl[[1]], engine = engine)
+
+  }
+
+
+
+
+  matrix <- reduced$matrix
+  donor_vec <- reduced$obs$donor
+  engine = "blmer"
+
+
+  r <- parallel::mclapply(
+    1:ncol(matrix)[1:10],
+    \(idx) dGC::fit_model(expr= Matrix::Matrix(matrix)[, idx], donor_vec = donor_vec,engine = engine)
+  )
 
 
 

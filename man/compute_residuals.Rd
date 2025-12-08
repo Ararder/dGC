@@ -7,6 +7,7 @@
 compute_residuals(
   matrix,
   engine = c("blmer", "lmer", "glmer"),
+  ncores = 1,
   cells = NULL,
   donor_vec
 )
@@ -15,6 +16,8 @@ compute_residuals(
 \item{matrix}{count matrix}
 
 \item{engine}{method to fit the model, one of "blmer", "lmer", or "glmer"}
+
+\item{ncores}{number of cores to use}
 
 \item{cells}{a vector of cell identifiers to use, if NULL all cells are used}
 

@@ -9,7 +9,8 @@ corr_diff(
   obs_1,
   obs_2,
   fit_models = c("none", "blmer", "lmer", "glmer"),
-  method = c("pearson", "spearman")
+  method = c("pearson", "spearman"),
+  ncores = 1
 )
 }
 \arguments{
@@ -19,9 +20,11 @@ corr_diff(
 
 \item{obs_2}{a data frame containing cell identifiers and donor information for the second condition}
 
-\item{fit_models}{which models to fit}
+\item{fit_models}{model to residualise expression}
 
-\item{method}{correlation method}
+\item{method}{Pearson or spearman for correlations}
+
+\item{ncores}{number of cores to use for compute_residuals}
 }
 \value{
 a matrix of the difference in correlation between the two conditions

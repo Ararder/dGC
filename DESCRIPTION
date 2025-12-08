@@ -21,6 +21,8 @@ Imports:
     cli,
     dplyr,
     dynamicTreeCut,
+    furrr,
+    future,
     lme4,
     Matrix,
     purrr,

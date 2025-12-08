@@ -4,10 +4,12 @@
 \alias{run_permutations}
 \title{Generate permutations}
 \usage{
-run_permutations(dir)
+run_permutations(dir, ncores = 1)
 }
 \arguments{
 \item{dir}{directory where [setup_dgc()] has created data}
+
+\item{ncores}{number of cores for residualizing}
 }
 \description{
 Generate permutations
