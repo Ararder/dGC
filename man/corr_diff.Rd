@@ -9,8 +9,7 @@ corr_diff(
   obs_1,
   obs_2,
   fit_models = c("none", "blmer", "lmer", "glmer"),
-  method = c("pearson", "spearman"),
-  formula = stats::as.formula("expr ~ 1 + (1|donor)")
+  method = c("pearson", "spearman")
 )
 }
 \arguments{
@@ -23,8 +22,6 @@ corr_diff(
 \item{fit_models}{which models to fit}
 
 \item{method}{correlation method}
-
-\item{formula}{formula for mixed effect model}
 }
 \value{
 a matrix of the difference in correlation between the two conditions

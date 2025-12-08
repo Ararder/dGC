@@ -10,7 +10,6 @@ setup_dgc(
   n_iter = 100,
   fit_models = c("none", "blmer", "lmer", "glmer"),
   method = c("pearson", "spearman"),
-  formula = stats::as.formula("expr ~ 1 + (1|donor)"),
   min_cells_per_donor = 10,
   replace = FALSE,
   dir = NULL
@@ -26,8 +25,6 @@ setup_dgc(
 \item{fit_models}{regress out donor effects?}
 
 \item{method}{pearson or spearman for correlation?}
-
-\item{formula}{formula for fit_models}
 
 \item{min_cells_per_donor}{minimum number of cells per donor}
 

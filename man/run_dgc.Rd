@@ -11,7 +11,6 @@ run_dgc(
   n_iter = 100,
   fit_models = c("none", "blmer", "lmer", "glmer"),
   method = c("pearson", "spearman"),
-  formula = stats::as.formula("expr ~ 1 + (1|donor)"),
   min_cells_per_donor = 10,
   n_ctrl = 10,
   n_case = 10,
@@ -29,8 +28,6 @@ run_dgc(
 \item{fit_models}{which models to fit}
 
 \item{method}{correlation method}
-
-\item{formula}{formula for mixed effect model}
 
 \item{min_cells_per_donor}{Minimum number of cells per donor}
 

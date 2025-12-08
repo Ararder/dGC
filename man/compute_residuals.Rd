@@ -7,7 +7,6 @@
 compute_residuals(
   matrix,
   engine = c("blmer", "lmer", "glmer"),
-  formula = stats::as.formula("expr ~ 1 + (1|donor)"),
   cells = NULL,
   donor_vec
 )
@@ -16,8 +15,6 @@ compute_residuals(
 \item{matrix}{count matrix}
 
 \item{engine}{method to fit the model, one of "blmer", "lmer", or "glmer"}
-
-\item{formula}{a formula to use for the model, default is "expr ~ 1 + (1|donor)"}
 
 \item{cells}{a vector of cell identifiers to use, if NULL all cells are used}
 

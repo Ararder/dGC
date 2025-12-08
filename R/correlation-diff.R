@@ -11,7 +11,6 @@ utils::globalVariables(c("donor", "cell", "donoc_vec"))
 #' @param n_iter number of iterations for bootstrap
 #' @param fit_models regress out donor effects?
 #' @param method pearson or spearman for correlation?
-#' @param formula formula for fit_models
 #' @param min_cells_per_donor minimum number of cells per donor
 #' @param replace allow replacement in permutation?
 #' @param dir directory to setup analysis in
@@ -29,7 +28,6 @@ setup_dgc <- function(
     n_iter=100,
     fit_models = c("none", "blmer", "lmer","glmer"),
     method = c("pearson","spearman"),
-    formula = stats::as.formula("expr ~ 1 + (1|donor)"),
     min_cells_per_donor = 10,
     replace=FALSE,
     dir = NULL
@@ -72,7 +70,7 @@ setup_dgc <- function(
   readr::write_rds(permutation_labels ,file = file.path(dir, "permutation_labels.rds"), compress = "gz")
   readr::write_rds(M,file = file.path(dir, "M.rds"), compress = "gz")
   readr::write_rds(obs,file = file.path(dir, "obs.rds"), compress = "gz")
-  readr::write_rds(list(fit_models = fit_models,method = method,formula = formula), file = file.path(dir, "arg.rds"))
+  readr::write_rds(list(fit_models = fit_models,method = method), file = file.path(dir, "arg.rds"))
 
 }
 
@@ -85,7 +83,6 @@ setup_dgc <- function(
 #' @param n_iter number of permutations
 #' @param fit_models which models to fit
 #' @param method correlation method
-#' @param formula formula for mixed effect model
 #' @param min_cells_per_donor Minimum number of cells per donor
 #' @param n_ctrl number of control donors to sample
 #' @param n_case number of case donors to sample
@@ -104,7 +101,6 @@ run_dgc <- function(
     n_iter=100,
     fit_models = c("none", "blmer", "lmer","glmer"),
     method = c("pearson","spearman"),
-    formula = stats::as.formula("expr ~ 1 + (1|donor)"),
     min_cells_per_donor = 10,
     n_ctrl=10,
     n_case =10,
@@ -150,7 +146,6 @@ run_dgc <- function(
     obs_1 = cond[[1]],
     obs_2 = cond[[2]],
     fit_models = fit_models,
-    formula = formula,
     method = method
   )
   readr::write_rds(real_diff, file = file.path(dir, "real_diff.rds"), compress = "gz")
@@ -183,7 +178,6 @@ run_permutations <- function(
   # 2. Extract variables (and convert formula back)
   method <- params$method
   fit_models  <- params$fit_models
-  formula <- stats::as.formula(params$formula)
 
 
   permutation_labels <- readr::read_rds(file = file.path(dir, "permutation_labels.rds"))
@@ -204,7 +198,6 @@ run_permutations <- function(
       obs_1 = dplyr::filter(obs, donor %in% d1),
       obs_2 = dplyr::filter(obs, donor %in% d2),
       fit_models = fit_models,
-      formula = formula,
       method = method
     )
 
@@ -215,7 +208,6 @@ run_permutations <- function(
   }, .progress = list(type = "tasks", name = "computing permutations"),
   dir = dir,
   fit_models = fit_models,
-  formula = formula,
   method = method
   ))
 }
@@ -241,8 +233,7 @@ corr_diff <- function(
     obs_1,
     obs_2,
     fit_models = c("none", "blmer", "lmer","glmer"),
-    method = c("pearson", "spearman"),
-    formula = stats::as.formula("expr ~ 1 + (1|donor)")
+    method = c("pearson", "spearman")
 ) {
   cli::cli_h2("Calculating a correlation difference matrix")
   method <- rlang::arg_match(method)
@@ -254,9 +245,9 @@ corr_diff <- function(
   } else {
     cli::cli_alert_info("Residualizing expression values using a {fit_models} model")
     cli::cli_alert_info("Condition 1: {nrow(obs_1)} cells from {length(unique(obs_1$donor))} donors")
-    m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, engine = fit_models, formula=formula)
+    m1 <- compute_residuals(matrix = M, cells = obs_1$cell, donor_vec = obs_1$donor, engine = fit_models)
     cli::cli_alert_info("Condition 2: {nrow(obs_2)} cells from {length(unique(obs_2$donor))} donors")
-    m2 <- compute_residuals(matrix = M, cells = obs_2$cell, donor_vec = obs_2$donor, engine = fit_models, formula=formula)
+    m2 <- compute_residuals(matrix = M, cells = obs_2$cell, donor_vec = obs_2$donor, engine = fit_models)
   }
 
   cor_cond1 <- stats::cor(as.matrix(m1), method = method)
@@ -272,7 +263,6 @@ corr_diff <- function(
 #'
 #' @param matrix count matrix
 #' @param engine method to fit the model, one of "blmer", "lmer", or "glmer"
-#' @param formula a formula to use for the model, default is "expr ~ 1 + (1|donor)"
 #' @param cells a vector of cell identifiers to use, if NULL all cells are used
 #' @param donor_vec a vector of donor identifiers, must be the same length as cells
 #'
@@ -282,7 +272,7 @@ corr_diff <- function(
 #' @examples \dontrun{
 #' compute_residuals(count_matrix)
 #' }
-compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), formula = stats::as.formula("expr ~ 1 + (1|donor)"), cells=NULL, donor_vec) {
+compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), cells=NULL, donor_vec) {
   engine <- rlang::arg_match(engine)
   stopifnot(length(cells) == length(donor_vec))
   if(!is.null(cells)) {
@@ -298,13 +288,11 @@ compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), formu
         fit_model(
           expr= Matrix::Matrix(matrix)[, idx],
           donor_vec = donor_vec,
-          formula = formula,
           engine = engine
           )
         },
       matrix = matrix,
       donoc_vec = donoc_vec,
-      formula = formula,
       engine = engine
       ))
 
@@ -316,14 +304,15 @@ compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), formu
   M
 }
 
-fit_model <- function(expr, donor_vec, formula, engine) {
+fit_model <- function(expr, donor_vec, engine) {
+
   df <- dplyr::tibble(expr = expr, donor = donor_vec)
   if (engine == "blmer") {
-    m <- blme::blmer(formula, data = df)
+    m <- blme::blmer(expr ~ 1 + (1|donor), data = df)
   } else if (engine == "lmer") {
-    m <- lme4::lmer(formula, data = df)
+    m <- lme4::lmer(expr ~ 1 + (1|donor), data = df)
   } else if (engine == "glmer") {
-    m <- lme4::glmer(formula, data = df, family = stats::gaussian())
+    m <- lme4::glmer(expr ~ 1 + (1|donor), data = df, family = stats::gaussian())
   }
   stats::residuals(m)
 }
