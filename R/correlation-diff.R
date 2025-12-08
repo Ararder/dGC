@@ -1,5 +1,4 @@
-
-utils::globalVariables(c("donor", "cell"))
+utils::globalVariables(c("donor", "cell", "celltype"))
 
 
 
@@ -7,11 +6,9 @@ utils::globalVariables(c("donor", "cell"))
 #' Setup the analysis for differential gene-correlation
 #'
 #' @param obj an object created by [read_data()]
-#' @param split_by column to split by - the `condition` column
 #' @param n_iter number of iterations for bootstrap
 #' @param fit_models regress out donor effects?
 #' @param method pearson or spearman for correlation?
-#' @param min_cells_per_donor minimum number of cells per donor
 #' @param replace allow replacement in permutation?
 #' @param dir directory to setup analysis in
 #'
@@ -24,11 +21,9 @@ utils::globalVariables(c("donor", "cell"))
 #'
 setup_dgc <- function(
     obj,
-    split_by = "condition",
     n_iter=100,
     fit_models = c("none", "blmer", "lmer","glmer"),
     method = c("pearson","spearman"),
-    min_cells_per_donor = 10,
     replace=FALSE,
     dir = NULL
 ) {
@@ -42,30 +37,31 @@ setup_dgc <- function(
     file.exists(dir) || cli::cli_abort("Output directory: {dir} does not exist")
   }
 
-  cli::cli_h1("Starting dGC pipeline")
+  cli::cli_h1("Setting up dGC pipeline")
 
-  # min cells per dono
-  all_donors <- dplyr::count(obj$obs, donor) |>
-    dplyr::filter(.data[["n"]] >= min_cells_per_donor) |>
-    dplyr::pull(donor)
+  all_donors <- obj$obs$donor |> unique()
 
-  n_per_cond <- dplyr::filter(obj$obs, donor %in% all_donors) |>
-    dplyr::group_by(.data[[split_by]]) |>
+  cli::cli_alert_info("Found {length(all_donors)} unique donors across both conditions")
+
+  n_per_cond <- dplyr::group_by(obj$obs, .data[["condition"]]) |>
     dplyr::summarise(n = dplyr::n_distinct(donor))
 
   n_control <- n_per_cond$n[1]
   n_case <- n_per_cond$n[2]
+
+  #
+  cli::cli_alert_info("Using {n_control} donors for condition 1 and {n_case} donors for condition 2")
 
 
   M <- obj$matrix
   obs <- obj$obs
 
 
-  cli::cli_inform("Splitting by {split_by}")
-  split_by %in% colnames(obs) || cli::cli_abort("Could not find column {split_by} in obs data.frame")
-  cond <- split(obs, obs[[split_by]])
+  # -------------------------------------------------------------------------
+  cli::cli_alert_info("Cell by Gene matrix dimensions: {dim(M)}")
 
 
+  cli::cli_alert("Saving data in {dir}")
   permutation_labels <- purrr::map(1:n_iter, \(i)  sample_donors(all_donors, n_control, n_case, replace))
   readr::write_rds(permutation_labels ,file = file.path(dir, "permutation_labels.rds"), compress = "gz")
   readr::write_rds(M,file = file.path(dir, "M.rds"), compress = "gz")
@@ -133,6 +129,49 @@ run_permutations <- function(
   method = method,
   ncores = ncores
   ))
+}
+
+#' Calculate the true correlation difference between conditions
+#'
+#' @param dir directory where [setup_dgc()] has created data
+#' @param ncores number of cores for residualizing
+#'
+#' @returns NULL
+#' @export
+#'
+#' @examples \dontrun{
+#' run_real_diff(tempdir(), ncores=3)
+#' }
+run_real_diff <- function(dir, ncores=1) {
+  params <- readr::read_rds(file.path(dir, "arg.rds"))
+  obs <- readr::read_rds(file = file.path(dir, "obs.rds"))
+  M <- readr::read_rds(file = file.path(dir, "M.rds"))
+  # 2. Extract variables (and convert formula back)
+  method <- params$method
+  fit_models  <- params$fit_models
+
+  conds <- split(obs, obs$condition)
+
+
+  # -------------------------------------------------------------------------
+  cli::cli_h1("Calculating the true correlation difference matrix")
+  cli::cli_inform("Using: {ncores} cores, number of genes: {ncol(M)}")
+  # and unique donors in each condition
+  cli::cli_inform("Condition 1: {length(unique(conds[[1]]$donor))} unique donors ( {names(conds)[1]} ), {nrow(conds[[1]])} cells")
+  cli::cli_inform("Condition 2: {length(unique(conds[[2]]$donor))} unique donors ( {names(conds)[2]} ), {nrow(conds[[2]])} cells)")
+
+  real_diff <- corr_diff(
+    M = M,
+    obs_1 = conds[[1]],
+    obs_2 = conds[[2]],
+    fit_models = fit_models,
+    method = method,
+    ncores = ncores
+  )
+
+  readr::write_rds(real_diff, file = file.path(dir, "real_diff.rds"))
+
+
 }
 
 
@@ -265,8 +304,20 @@ sample_donors <- function(all_donors, n_ctrl, n_case, replace) {
 
 
 
-mask_from_perm <- function(R, P_path) {
 
+#' Get the empirical p-value for each link
+#'
+#' @param dir directory where permutations are stored
+#'
+#' @returns NULL
+#' @export
+#'
+#' @examples \dontrun{
+#' get_empirical_p(tempdir())
+#' }
+get_empirical_p <- function(dir) {
+  P_path <- fs::dir_ls(dir, glob = "*perm_diff_*.rds")
+  R <- readr::read_rds(file.path(dir, "real_diff.rds"))
 
   n_perms <- length(P_path)
   mask <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))

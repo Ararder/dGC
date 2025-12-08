@@ -40,6 +40,10 @@ read_data <- function(path, type = c("seurat","h5ad", "loom")) {
 #' @param ct celltype, "beta cells"
 #' @param ct_column column of celltypes
 #' @param prop_cells proportion of cells that need to express a gene to be kept
+#' @param min_cells_per_donor Minimum number of cells per donor to include that donor
+#' @param donor_col column name for donor
+#' @param condition_col column name for condition
+#'
 #'
 #' @returns a list
 #' @export
@@ -47,7 +51,7 @@ read_data <- function(path, type = c("seurat","h5ad", "loom")) {
 #' @examples \dontrun{
 #' prep_cluster_counts(obj, ct = "beta cells", ct_column = "named_celltype", prop_cells = 0.9)
 #' }
-prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cells = 0.9) {
+prep_cluster_counts <- function(obj, prop_cells = 0.9, min_cells_per_donor = 10, ct, ct_column = "named_celltype",donor_col = "donor", condition_col = "condition") {
   # Input validation
   rlang::check_required(ct)
   rlang::check_required(ct_column)
@@ -57,8 +61,27 @@ prep_cluster_counts <- function(obj, ct, ct_column = "named_celltype", prop_cell
   obs_df <- obj[["obs"]]
   var_df <- obj[["var"]]
 
+
+  # -------------------------------------------------------------------------
+  obs_df <- dplyr::select(
+    obs_df, cell,
+    celltype = {{ct_column}},
+    donor = {{donor_col}},
+    condition = {{condition_col}}
+    )
+
+
+  # -------------------------------------------------------------------------
+
+  all_donors <- dplyr::count(obs_df, donor) |>
+    dplyr::filter(.data[["n"]] >= min_cells_per_donor) |>
+    dplyr::pull(donor)
+
+  obs_df <- dplyr::filter(obs_df, donor %in% all_donors)
+
+
   # Filter cells by cell type
-  obs_df <- dplyr::filter(obs_df, .data[[ct_column]] == ct)
+  obs_df <- dplyr::filter(obs_df, celltype == ct)
   sel_cells <- obs_df[["cell"]]
   n_cells_selected <- length(sel_cells)
 

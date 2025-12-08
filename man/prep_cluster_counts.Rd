@@ -6,16 +6,30 @@
 cells are filtered to a single cell-type and genes are reduced by considering
 the proportion of cells they are expressed in.}
 \usage{
-prep_cluster_counts(obj, ct, ct_column = "named_celltype", prop_cells = 0.9)
+prep_cluster_counts(
+  obj,
+  prop_cells = 0.9,
+  min_cells_per_donor = 10,
+  ct,
+  ct_column = "named_celltype",
+  donor_col = "donor",
+  condition_col = "condition"
+)
 }
 \arguments{
 \item{obj}{dGA object}
+
+\item{prop_cells}{proportion of cells that need to express a gene to be kept}
+
+\item{min_cells_per_donor}{Minimum number of cells per donor to include that donor}
 
 \item{ct}{celltype, "beta cells"}
 
 \item{ct_column}{column of celltypes}
 
-\item{prop_cells}{proportion of cells that need to express a gene to be kept}
+\item{donor_col}{column name for donor}
+
+\item{condition_col}{column name for condition}
 }
 \value{
 a list

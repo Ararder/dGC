@@ -6,11 +6,9 @@
 \usage{
 setup_dgc(
   obj,
-  split_by = "condition",
   n_iter = 100,
   fit_models = c("none", "blmer", "lmer", "glmer"),
   method = c("pearson", "spearman"),
-  min_cells_per_donor = 10,
   replace = FALSE,
   dir = NULL
 )
@@ -18,15 +16,11 @@ setup_dgc(
 \arguments{
 \item{obj}{an object created by [read_data()]}
 
-\item{split_by}{column to split by - the `condition` column}
-
 \item{n_iter}{number of iterations for bootstrap}
 
 \item{fit_models}{regress out donor effects?}
 
 \item{method}{pearson or spearman for correlation?}
-
-\item{min_cells_per_donor}{minimum number of cells per donor}
 
 \item{replace}{allow replacement in permutation?}
 

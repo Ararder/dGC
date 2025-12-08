@@ -4,11 +4,24 @@ test_that("reduce matrix works", {
 
 
   data <- read_data("~/Downloads/qc_merged_seurat.rds")
-  reduced <- prep_cluster_counts(data, "beta cells", ct_column = "named_celltype", prop_cells = 0.5)
+  reduced <- prep_cluster_counts(
+    data,
+    prop_cells = 0.5,
+    min_cells_per_donor = 10,
+    ct = "beta cells",
+    ct_column = "named_celltype",
+    donor_col = "donor",
+    condition_col = "status"
+  )
 
-  matrix <- reduced$matrix
-  engine <- "blmer"
-  donor_vec <- reduced$obs$donor
+
+  setup_dgc(obj = reduced, n_iter = 6,fit_models = "blmer",dir = tempdir())
+  run_real_diff(tempdir(), ncores = 6)
+  mirai::daemons(3)
+  run_permutations(tempdir(), ncores = 3)
+  list.files(tempdir())
+
+
 
 
 
