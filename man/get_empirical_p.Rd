@@ -9,8 +9,26 @@ get_empirical_p(dir)
 \arguments{
 \item{dir}{directory where permutations are stored}
 }
+\value{
+a genes x genes matrix of one-sided empirical p-values
+  (small = significant), with gene names as dimnames.
+}
 \description{
-Get the empirical p-value for each link
+One-sided permutation test per gene-gene edge: how often the |real
+correlation-difference| is matched or exceeded by the donor-permuted null.
+}
+\details{
+\deqn{p = (\#\{|perm| \ge |R|\} + 1) / (n_{perms} + 1)}
+
+SMALL p = significant (the real effect is larger than the null), following
+the usual permutation-test convention (Phipson & Smyth 2010). This is the
+inverse of the quantity returned by older versions of this function, which
+counted `|R| > |perm|` and so had large values = significant; threshold on
+the value returned here directly (e.g. `p < 0.05`).
+
+The returned matrix keeps the gene names from `real_diff.rds` on its
+rows/columns. Self-edges (the diagonal) have R = perm = 0 and are reported
+as p = 1; exclude the diagonal before any multiple-testing correction.
 }
 \examples{
 \dontrun{

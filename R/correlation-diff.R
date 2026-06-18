@@ -119,7 +119,7 @@ run_permutations <- function(
       ncores = ncores
     )
 
-    readr::write_rds(diff, file = file.path(dir, paste0("perm_diff_", i, ".rds")), compress = "gz")
+    readr::write_rds(diff, file = file.path(dir, paste0("perm_diff_", i, ".rds")))
     rm(diff)
     gc()
 
@@ -250,7 +250,10 @@ compute_residuals <- function(matrix, engine = c("blmer", "lmer","glmer"), ncore
     res <- purrr::map(1:ncol(matrix), \(idx) dGC::fit_model(expr= matrix[, idx], donor_vec = donor_vec,engine = engine), .progress = list(type = "tasks"))
 
   } else {
-    future::plan(future::multisession, workers = ncores)
+    # multicore (fork) not multisession (PSOCK): forked workers share memory
+    # via copy-on-write and open NO sockets, so inner pools nest safely under
+    # the outer mirai daemons in run_permutations (PSOCK ports collide there).
+    future::plan(future::multicore, workers = ncores)
 
 
     res <- furrr::future_map(1:ncol(matrix), \(idx) {
@@ -307,9 +310,25 @@ sample_donors <- function(all_donors, n_ctrl, n_case, replace) {
 
 #' Get the empirical p-value for each link
 #'
+#' One-sided permutation test per gene-gene edge: how often the |real
+#' correlation-difference| is matched or exceeded by the donor-permuted null.
+#'
+#' \deqn{p = (\#\{|perm| \ge |R|\} + 1) / (n_{perms} + 1)}
+#'
+#' SMALL p = significant (the real effect is larger than the null), following
+#' the usual permutation-test convention (Phipson & Smyth 2010). This is the
+#' inverse of the quantity returned by older versions of this function, which
+#' counted `|R| > |perm|` and so had large values = significant; threshold on
+#' the value returned here directly (e.g. `p < 0.05`).
+#'
+#' The returned matrix keeps the gene names from `real_diff.rds` on its
+#' rows/columns. Self-edges (the diagonal) have R = perm = 0 and are reported
+#' as p = 1; exclude the diagonal before any multiple-testing correction.
+#'
 #' @param dir directory where permutations are stored
 #'
-#' @returns NULL
+#' @returns a genes x genes matrix of one-sided empirical p-values
+#'   (small = significant), with gene names as dimnames.
 #' @export
 #'
 #' @examples \dontrun{
@@ -320,21 +339,30 @@ get_empirical_p <- function(dir) {
   R <- readr::read_rds(file.path(dir, "real_diff.rds"))
 
   n_perms <- length(P_path)
-  mask <- matrix(FALSE, ncol = ncol(R),nrow = nrow(R))
+  abs_R <- abs(R)
+  # Count, per edge, how many permutations match or exceed the real |effect|.
+  ge_count <- matrix(0L, ncol = ncol(R), nrow = nrow(R))
 
   for(i in seq_along(P_path)) {
     perm <- readr::read_rds(P_path[[i]])
-    mask <- mask + (abs(R) > abs(perm))
+    ge_count <- ge_count + (abs(perm) >= abs_R)
+    cli::cli_alert_info("Processed permutation {i} / {n_perms}")
   }
 
-  emp_p <- (mask + 1) / (n_perms + 1)
-  n_edges <- length(mask)
+  # One-sided permutation p-value (small = significant).
+  emp_p <- (ge_count + 1) / (n_perms + 1)
+  dimnames(emp_p) <- dimnames(R)
 
-
+  # Report significance over off-diagonal edges only (the diagonal is the
+  # self-correlation, R = 0 = perm, an uninformative p = 1).
   alpha <- 0.05
-  n_edges_sig <- sum(emp_p < alpha)
+  off_diag <- !diag(TRUE, nrow(emp_p))
+  n_edges <- sum(off_diag)
+  n_edges_sig <- sum(emp_p[off_diag] < alpha)
 
-  cli::cli_alert_info("{round(n_edges_sig / n_edges,4)} edges significant at alpha = {alpha}")
+  cli::cli_alert_info(
+    "{round(n_edges_sig / n_edges, 4)} of off-diagonal edges significant at alpha = {alpha}"
+  )
 
   emp_p
 
